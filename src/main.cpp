@@ -11,7 +11,7 @@ void handlePIR();
 void handleSerial();
 
 // ——— Configuration ———————————————————————————————————
-const char* DEVICE_NAME          = "ASHRAF";
+const char* DEVICE_NAME          = "HAGRRAS";
 const unsigned int LOCAL_PORT    = 12345;
 const unsigned int TARGET_PORT   = 8080;
 unsigned long PIR_INTERVAL = 60000;   // ms
