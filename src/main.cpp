@@ -3,7 +3,7 @@
 #include "secrets.h"   // #define WIFI_SSID, WIFI_PASSWORD
 
 #define DEBUG 1  // or 0
-#define GHAFEER_NAME "HAGRRAS" 
+#define GHAFEER_NAME "HAGRRAS"
 
 const int PIR_PIN    = 2;  // D4
 const int RELAY_PIN  = 0;  // D3
@@ -60,21 +60,21 @@ void callback(char* topic, byte* payload, unsigned int length) {
   debugPrint("MQTT cmd: " + cmd);
 
   if (cmd == "REL_ON") {
-    if (SKIP_LOCAL_RELAY) {
-      debugPrint("Skipping local relay activation due to SKIP_LOCAL_RELAY setting");
-      client.publish(statusTopic.c_str(), "SKIP_LOCAL_RELAY is enabled, not activating relay locally");
-      return;
-    }
+    // if (SKIP_LOCAL_RELAY) {
+    //   debugPrint("Skipping local relay activation due to SKIP_LOCAL_RELAY setting");
+    //   client.publish(statusTopic.c_str(), "SKIP_LOCAL_RELAY is enabled, not activating relay locally");
+    //   return;
+    // }
     digitalWrite(RELAY_PIN, HIGH);
     relayActivatedMillis = millis();
     client.publish(statusTopic.c_str(), "Relay_ON");
   }
   else if (cmd == "REL_OFF") {
-    if (SKIP_LOCAL_RELAY) {
-      debugPrint("Skipping local relay deactivation due to SKIP_LOCAL_RELAY setting");
-      client.publish(statusTopic.c_str(), "SKIP_LOCAL_RELAY is enabled, not deactivating relay locally");
-      return;
-    }
+    // if (SKIP_LOCAL_RELAY) {
+    //   debugPrint("Skipping local relay deactivation due to SKIP_LOCAL_RELAY setting");
+    //   client.publish(statusTopic.c_str(), "SKIP_LOCAL_RELAY is enabled, not deactivating relay locally");
+    //   return;
+    // }
     digitalWrite(RELAY_PIN, LOW);
     relayActivatedMillis = 0;
     client.publish(statusTopic.c_str(), "Relay_OFF");
@@ -151,6 +151,7 @@ void handlePIR() {
       "\",\"ip\":\"" + WiFi.localIP().toString() +
       "\",\"time\":" + String(millis()) + "}";
     client.publish(motionTopic.c_str(), payload.c_str());
+
     if (SKIP_LOCAL_RELAY) {
       client.publish(statusTopic.c_str(), "Motion detected, but SKIP_LOCAL_RELAY is enabled, not activating relay locally");
     } else {
@@ -172,7 +173,8 @@ void checkRelayTimeout() {
 }
 
 void setup() {
-  pinMode(PIR_PIN,   INPUT);
+  pinMode(PIR_PIN, INPUT_PULLUP);
+  // pinMode(PIR_PIN,   INPUT);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
 
