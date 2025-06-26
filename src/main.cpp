@@ -2,8 +2,7 @@
 #include <PubSubClient.h>
 #include "secrets.h"   // #define WIFI_SSID, WIFI_PASSWORD
 
-#define DEBUG 1  // or 0
-#define GHAFEER_NAME "HAGRRAS"
+String GHAFEER_NAME = "MARZOOQ";
 
 const int PIR_PIN    = 2;  // D4
 const int RELAY_PIN  = 0;  // D3
@@ -13,6 +12,8 @@ const unsigned long RELAY_MAX_ON_DURATION = 120000; // ms
 bool SKIP_LOCAL_RELAY = true; // true to use local relay control, false to control other devices via MQTT
 // Note: SKIP_LOCAL_RELAY is used to skip local relay activation when motion is detected
 // and the device is configured to control the relay via MQTT only.
+
+bool DEBUG = false; // Set to true for debug messages, false for normal operation
 
 unsigned long lastMillis = 0;
 unsigned long relayActivatedMillis = 0;
@@ -101,14 +102,64 @@ void callback(char* topic, byte* payload, unsigned int length) {
     }
 
   }
+
+  else if (cmd == "RESTART") {
+    client.publish(statusTopic.c_str(), "Restarting...");
+    delay(1000);
+    ESP.restart();
+  }
+  
+  else if (cmd.startsWith("DEBUG:")) {
+    String debugValue = cmd.substring(6);
+    if (debugValue == "true" || debugValue == "1") {
+      DEBUG = true;
+      client.publish(statusTopic.c_str(), "DEBUG mode enabled");
+    } else if (debugValue == "false" || debugValue == "0") {
+      DEBUG = false;
+      client.publish(statusTopic.c_str(), "DEBUG mode disabled");
+    } else {
+      client.publish(statusTopic.c_str(), "Invalid DEBUG value");
+    }
+  }
+  
+  else if (cmd.startsWith("GHAFEER_NAME:")) {
+    String newName = cmd.substring(13);
+    if (newName.length() > 0) {
+      GHAFEER_NAME = newName;
+      buildTopics(); // Rebuild topics with the new name
+      String msg = "GHAFEER_NAME set to: " + GHAFEER_NAME;
+      client.publish(statusTopic.c_str(), msg.c_str());
+    } else {
+      client.publish(statusTopic.c_str(), "Invalid GHAFEER_NAME value");
+    }
+  }
+  else if (cmd == "HELP") {
+    String helpMsg = "{";
+    helpMsg += "\"commands\":[";
+    helpMsg += "{\"cmd\":\"REL_ON\",\"desc\":\"Turn relay ON\"},";
+    helpMsg += "{\"cmd\":\"REL_OFF\",\"desc\":\"Turn relay OFF\"},";
+    helpMsg += "{\"cmd\":\"REL_STATUS\",\"desc\":\"Get relay status\"},";
+    helpMsg += "{\"cmd\":\"PIR_INTERVAL:<value>\",\"desc\":\"Set PIR interval in ms\"},";
+    helpMsg += "{\"cmd\":\"SKIP_LOCAL_RELAY:<true/false>\",\"desc\":\"Enable/disable local relay control\"},";
+    helpMsg += "{\"cmd\":\"RESTART\",\"desc\":\"Restart the device\"},";
+    helpMsg += "{\"cmd\":\"REBOOT\",\"desc\":\"Reboot the device\"},";
+    helpMsg += "{\"cmd\":\"STATUS\",\"desc\":\"Get device status\"},";
+    helpMsg += "{\"cmd\":\"DEBUG:<true/false>\",\"desc\":\"Enable/disable debug mode\"},";
+    helpMsg += "{\"cmd\":\"GHAFEER_NAME:<name>\",\"desc\":\"Set GHAFEER name\"}";
+    helpMsg += "]}";
+    client.publish(statusTopic.c_str(), helpMsg.c_str());
+  }
+
   else if (cmd == "REBOOT") {
     client.publish(statusTopic.c_str(), "Rebooting...");
     delay(1000);
     ESP.restart();
   }
   else if (cmd == "STATUS") {
+    String relStatus = digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF";
     String info = "GHAFEER_NAME:" + String(GHAFEER_NAME) + ",Device_Status:Online,MAC:" 
-                  + mac + ",IP:" + WiFi.localIP().toString() + ",SKIP_LOCAL_RELAY:" + SKIP_LOCAL_RELAY;
+            + mac + ",IP:" + WiFi.localIP().toString() + ",SKIP_LOCAL_RELAY:" + SKIP_LOCAL_RELAY
+            + ",REL_Status:" + relStatus;
     client.publish(statusTopic.c_str(), info.c_str());
   }
   else {
@@ -173,7 +224,7 @@ void checkRelayTimeout() {
 }
 
 void setup() {
-  pinMode(PIR_PIN, INPUT_PULLUP);
+  // pinMode(PIR_PIN, INPUT_PULLUP);
   // pinMode(PIR_PIN,   INPUT);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
