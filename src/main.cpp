@@ -2,7 +2,7 @@
 #include <PubSubClient.h>
 #include "secrets.h"   // #define WIFI_SSID, WIFI_PASSWORD
 
-String GHAFEER_NAME = "MARZOOQ";
+String GHAFEER_NAME = "HAGRRAS";
 
 const int PIR_PIN    = 2;  // D4
 const int RELAY_PIN  = 0;  // D3
@@ -88,7 +88,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     PIR_INTERVAL = cmd.substring(13).toInt();
     String info = "PIR_INTERVAL_set:" + String(PIR_INTERVAL);
     client.publish(statusTopic.c_str(), info.c_str());
-  } 
+} 
   else if (cmd.startsWith("SKIP_LOCAL_RELAY:")) {
     String value = cmd.substring(17);
     if (value == "true" || value == "1") {
@@ -225,9 +225,15 @@ void checkRelayTimeout() {
 
 void setup() {
   // pinMode(PIR_PIN, INPUT_PULLUP);
-  // pinMode(PIR_PIN,   INPUT);
+  pinMode(PIR_PIN,   INPUT);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
+
+  // set baud rate for serial communication
+  Serial.begin(115200);
+  
+
+  debugPrint("Starting setup...");
 
   setup_wifi();
   buildTopics();
