@@ -52,8 +52,8 @@ void setup() {
     delay(1000);
   }
 
-  // Activate relay if local control is enabled
-  if (!SKIP_LOCAL_RELAY) {
+  // Activate relay if local control is enabled and the relay is not already active
+  if (!SKIP_LOCAL_RELAY && (digitalRead(RELAY_PIN) == LOW)) {
     digitalWrite(RELAY_PIN, HIGH);
   }
 
