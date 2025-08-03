@@ -5,7 +5,7 @@
 const int RELAY_PIN  = 0;  // D3
 
 String GHAFEER_NAME = "MAGHAWORE";
-bool SKIP_LOCAL_RELAY = true;
+bool SKIP_LOCAL_RELAY = false;
 bool DEBUG = false;
 
 WiFiClient espClient;
@@ -49,7 +49,7 @@ void setup() {
   client.setServer("192.168.1.246", 1883);
   while (!client.connected()) {
     client.connect(mac.c_str());
-    delay(100);
+    delay(1000);
   }
 
   // Activate relay if local control is enabled
@@ -71,7 +71,7 @@ void setup() {
   client.publish(statusTopic.c_str(), relayMsg.c_str());
 
   client.publish(statusTopic.c_str(), "Going to deep sleep...");
-  delay(30000);  // allow MQTT to flush
+  delay(60000);  // allow MQTT to flush
 
 
   client.disconnect();
