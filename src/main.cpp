@@ -2,10 +2,10 @@
 #include <PubSubClient.h>
 #include "secrets.h"   // #define WIFI_SSID, WIFI_PASSWORD
 
-String GHAFEER_NAME = "HAGRRAS";
+String GHAFEER_NAME = "DAHROOG";
 
-const int PIR_PIN    = 2;  // D4
-const int RELAY_PIN  = 0;  // D3
+const int PIR_PIN    = 4;  // D2
+const int RELAY_PIN  = 12;  // D6
 
 unsigned long PIR_INTERVAL = 60000; // ms (default, can change via MQTT)
 const unsigned long RELAY_MAX_ON_DURATION = 120000; // ms
