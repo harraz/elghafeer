@@ -4,7 +4,7 @@
 
 const int RELAY_PIN  = 0;  // D3
 
-String GHAFEER_NAME = "RAGAB";
+String GHAFEER_NAME = "3ANTTAR";
 bool SKIP_LOCAL_RELAY = false;
 bool DEBUG = false;
 
