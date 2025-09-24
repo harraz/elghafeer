@@ -4,7 +4,7 @@
 
 const int RELAY_PIN  = 0;  // D3
 
-String GHAFEER_NAME = "MASROOOR";
+String GHAFEER_NAME = "RAGAB";
 bool SKIP_LOCAL_RELAY = false;
 bool DEBUG = false;
 
@@ -21,7 +21,8 @@ void debugPrint(const String &msg) {
 
 void setup_wifi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
+  unsigned long t0 = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - t0 < 20000)) {
     delay(500);
     debugPrint("Connecting...");
   }
@@ -57,7 +58,7 @@ void setup() {
     digitalWrite(RELAY_PIN, HIGH);
   }
 
-  client.publish(statusTopic.c_str(), "Ghafeer is awaken...");
+  // client.publish(statusTopic.c_str(), "Ghafeer is awaken...");
   // Publish motion message
   String payload = "{\"motion\":true,\"mac\":\"" + mac +
       "\",\"location\":\"" + GHAFEER_NAME +
@@ -66,12 +67,14 @@ void setup() {
 
   // Publish relay status
   String relayMsg = SKIP_LOCAL_RELAY ? 
-    "Motion detected, SKIP_LOCAL_RELAY enabled" : 
-    "Motion detected, relay activated";
+    "Ghafeer is awaken..., SKIP_LOCAL_RELAY enabled" : 
+    "Ghafeer is awaken..., relay activated";
   client.publish(statusTopic.c_str(), relayMsg.c_str());
+  delay(100);  // allow MQTT to flush
 
-  client.publish(statusTopic.c_str(), "Going to deep sleep...");
-  delay(60000);  // allow MQTT to flush
+  relayMsg ="Going to deep sleep..., relay is " + String(digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF");
+  client.publish(statusTopic.c_str(), relayMsg.c_str());
+  delay(100);  // allow MQTT to flush
 
 
   client.disconnect();
