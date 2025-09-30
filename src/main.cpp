@@ -2,10 +2,10 @@
 #include <PubSubClient.h>
 #include "secrets.h"   // #define WIFI_SSID, WIFI_PASSWORD
 
-const int RELAY_PIN  = 0;  // D3
+const int RELAY_PIN  = 12;  // D6
 
 String GHAFEER_NAME = "3ANTTAR";
-bool SKIP_LOCAL_RELAY = false;
+bool SKIP_LOCAL_RELAY = true;
 bool DEBUG = false;
 
 WiFiClient espClient;
