@@ -4,7 +4,7 @@
 
 const int RELAY_PIN  = 12;  // D6
 
-String GHAFEER_NAME = "3ANTTAR";
+String GHAFEER_NAME = "SHANKAL";
 bool SKIP_LOCAL_RELAY = true;
 bool DEBUG = false;
 
