@@ -2,13 +2,20 @@
 #include <PubSubClient.h>
 #include "secrets.h"   // WIFI_SSID, WIFI_PASSWORD
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <ArduinoJson.h>
+
+JsonDocument doc;
+
 const int RELAY_PIN  = 12;  // D6
 
 String GHAFEER_NAME = "SHANKAL";
 bool SKIP_LOCAL_RELAY = false;
 bool DEBUG = false;
 
-const unsigned long RELAY_ON_DURATION_MS = 3000;   // how long relay stays ON
+unsigned int RELAY_ON_DURATION_MS = 3000;   // how long relay stays ON
 const unsigned long AWAKE_WINDOW_MS      = 18000;   // total time awake before sleep
 const char* MQTT_SERVER = "192.168.1.246";
 const int   MQTT_PORT   = 1883;
@@ -89,10 +96,27 @@ void setup() {
     delay(1000);
   }
 
+
+  // Stay awake for both relay duration and MQTT commands
+  unsigned long start = millis();
+// Remove or comment out:
+// srand(time(NULL));
+// RELAY_ON_DURATION_MS = rand() % RELAY_ON_DURATION_MS + 7000;
+
+  uint32_t randomMs = ESP.random() % RELAY_ON_DURATION_MS + 7000;  // 7000 to 9999
+  RELAY_ON_DURATION_MS = randomMs;   
+
+  doc["motion"] = true;
+  doc["mac"] = mac;
+  doc["location"] = GHAFEER_NAME;
+  doc["ip"] = WiFi.localIP().toString();
+  doc["relay_duration_ms"] = RELAY_ON_DURATION_MS;
+  doc["awake_window_ms"] = AWAKE_WINDOW_MS;
+
   // Publish motion message
-  String payload = "{\"motion\":true,\"mac\":\"" + mac +
-                   "\",\"location\":\"" + GHAFEER_NAME +
-                   "\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
+  String payload;
+  serializeJson(doc, payload);
+
   client.publish(motionTopic.c_str(), payload.c_str());
 
   // Relay ON if not skipped
@@ -103,8 +127,6 @@ void setup() {
     client.publish(statusTopic.c_str(), "Awake, SKIP_LOCAL_RELAY enabled");
   }
 
-  // Stay awake for both relay duration and MQTT commands
-  unsigned long start = millis();
   while (millis() - start < AWAKE_WINDOW_MS) {
     client.loop();
 
