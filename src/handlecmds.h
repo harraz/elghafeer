@@ -16,6 +16,28 @@ void handleCommand(String cmd);
 void addHelp(JsonArray arr, const char* cmd, const char* desc);
 void buildTopics();
 
+// Parsers (strict numeric, with range) and bool
+// -------------------------------
+static bool parseInt(const String& arg, long& outVal, long minVal, long maxVal) {
+  if (arg.length() == 0) return false;
+  for (size_t i = 0; i < arg.length(); ++i) {
+    char c = arg[i];
+    if (i == 0 && (c == '+' || c == '-')) continue;
+    if (c < '0' || c > '9') return false;
+  }
+  long v = arg.toInt();
+  if (v < minVal || v > maxVal) return false;
+  outVal = v;
+  return true;
+}
+
+static bool parseBool(const String& arg, bool& outVal) {
+  String v = arg; v.trim(); v.toLowerCase();
+  if (v == "true" || v == "1")  { outVal = true;  return true; }
+  if (v == "false"|| v == "0")  { outVal = false; return true; }
+  return false;
+}
+
 void handleCommand(String cmd) {
   JsonDocument doc;
   String response;
@@ -37,20 +59,22 @@ void handleCommand(String cmd) {
     doc["relay_status"] = digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF";
   }
   else if (cmd.startsWith("PIR_INTERVAL:")) {
-    PIR_INTERVAL = cmd.substring(13).toInt();
-    doc["status"] = "ok";
-    doc["PIR_INTERVAL"] = PIR_INTERVAL;
+      long temp = PIR_INTERVAL;
+      if (!parseInt(cmd.substring(13), temp, 0L, (long)MAX_PIR_INTERVAL_MS)) {
+      doc["status"] = "error";
+    } else {
+      PIR_INTERVAL = temp;
+      doc["status"] = "ok";
+      doc["PIR_INTERVAL"] = PIR_INTERVAL;
+    }
   }
   else if (cmd.startsWith("SKIP_LOCAL_RELAY:")) {
     String value = cmd.substring(17);
-    if (value == "true" || value == "1") {
-      SKIP_LOCAL_RELAY = true;
+    bool parsedValue;
+    if (parseBool(value, parsedValue)) {
+      SKIP_LOCAL_RELAY = parsedValue;
       doc["status"] = "ok";
-      doc["SKIP_LOCAL_RELAY"] = true;
-    } else if (value == "false" || value == "0") {
-      SKIP_LOCAL_RELAY = false;
-      doc["status"] = "ok";
-      doc["SKIP_LOCAL_RELAY"] = false;
+      doc["SKIP_LOCAL_RELAY"] = SKIP_LOCAL_RELAY;
     } else {
       doc["status"] = "error";
       doc["message"] = "Invalid SKIP_LOCAL_RELAY value";

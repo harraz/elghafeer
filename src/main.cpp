@@ -6,21 +6,22 @@
 #include "handlecmds.h"
 #include <ArduinoJson.h>
 
-String GHAFEER_NAME = "MARZOOQ";
+String GHAFEER_NAME = "MARZOOQ2";
 
 const int PIR_PIN    = 4;  // D2
 const int RELAY_PIN  = 12;  // D6
 
-unsigned long PIR_INTERVAL = 60000; // ms (default, can change via MQTT)
-unsigned long RELAY_MAX_ON_DURATION = 60000; // ms
+unsigned int PIR_INTERVAL = 60000UL; // ms (default, can change via MQTT)
+unsigned int RELAY_MAX_ON_DURATION = 60000UL; // ms
+unsigned int MAX_PIR_INTERVAL_MS = 30000UL; // ms (maximum interval between PIR detections)
 bool SKIP_LOCAL_RELAY = true; // true to use local relay control, false to control other devices via MQTT
 // Note: SKIP_LOCAL_RELAY is used to skip local relay activation when motion is detected
 // and the device is configured to control the relay via MQTT only.
 
 bool DEBUG = false; // Set to true for debug messages, false for normal operation
 
-unsigned long lastMillis = 0;
-unsigned long relayActivatedMillis = 0;
+unsigned int lastMillis = 0;
+unsigned int relayActivatedMillis = 0;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
