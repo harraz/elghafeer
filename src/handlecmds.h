@@ -16,17 +16,8 @@ void handleCommand(String cmd);
 void addHelp(JsonArray arr, const char* cmd, const char* desc);
 void buildTopics();
 
-// Global variables (defined in .cpp)
-extern int RELAY_PIN;
-extern unsigned long relayActivatedMillis;
-extern bool SKIP_LOCAL_RELAY;
-extern bool DEBUG;
-extern String GHAFEER_NAME;
-extern String mac;
-extern long PIR_INTERVAL;
-
 void handleCommand(String cmd) {
-  JsonDocument<300> doc;
+  JsonDocument doc;
   String response;
 
   if (cmd == "REL_ON") {
@@ -111,7 +102,9 @@ void handleCommand(String cmd) {
     doc["debug"] = DEBUG;
   }
   else if (cmd == "HELP") {
-    JsonArray commands = doc.createNestedArray("commands");
+    // JsonArray commands = doc.createNestedArray("commands");
+    JsonArray commands = doc["commands"].to<JsonArray>();
+
     addHelp(commands, "REL_ON", "Turn relay ON");
     addHelp(commands, "REL_OFF", "Turn relay OFF");
     addHelp(commands, "REL_STATUS", "Get relay status");
@@ -132,7 +125,8 @@ void handleCommand(String cmd) {
 }
 
 void addHelp(JsonArray arr, const char* cmd, const char* desc) {
-  JsonObject obj = arr.createNestedObject();
+  // JsonObject obj = arr.createNestedObject();
+  JsonObject obj = arr.add<JsonObject>();
   obj["cmd"] = cmd;
   obj["desc"] = desc;
 }
