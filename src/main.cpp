@@ -1,22 +1,25 @@
 #include <ESP8266WiFi.h>
-#include <PubSubClient.h>
+#include "globals.h"
 #include "secrets.h"   // #define WIFI_SSID, WIFI_PASSWORD
+#include "handlecmds.h"
+#include <ArduinoJson.h>
 
-String GHAFEER_NAME = "HAGRRAS";
+String GHAFEER_NAME = "MARZOOQ";
 
 const int PIR_PIN    = 2;  // D4
 const int RELAY_PIN  = 0;  // D3
 
-unsigned long PIR_INTERVAL = 60000; // ms (default, can change via MQTT)
-const unsigned long RELAY_MAX_ON_DURATION = 120000; // ms
+unsigned int PIR_INTERVAL = 60000UL; // ms (default, can change via MQTT)
+unsigned int RELAY_MAX_ON_DURATION = 60000UL; // ms
+unsigned int MAX_PIR_INTERVAL_MS = 30000UL; // ms (maximum interval between PIR detections)
 bool SKIP_LOCAL_RELAY = true; // true to use local relay control, false to control other devices via MQTT
 // Note: SKIP_LOCAL_RELAY is used to skip local relay activation when motion is detected
 // and the device is configured to control the relay via MQTT only.
 
 bool DEBUG = false; // Set to true for debug messages, false for normal operation
 
-unsigned long lastMillis = 0;
-unsigned long relayActivatedMillis = 0;
+unsigned int lastMillis = 0;
+unsigned int relayActivatedMillis = 0;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -60,112 +63,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   cmd.trim();
   debugPrint("MQTT cmd: " + cmd);
 
-  if (cmd == "REL_ON") {
-    // if (SKIP_LOCAL_RELAY) {
-    //   debugPrint("Skipping local relay activation due to SKIP_LOCAL_RELAY setting");
-    //   client.publish(statusTopic.c_str(), "SKIP_LOCAL_RELAY is enabled, not activating relay locally");
-    //   return;
-    // }
-    digitalWrite(RELAY_PIN, HIGH);
-    relayActivatedMillis = millis();
-    client.publish(statusTopic.c_str(), "Relay_ON");
-  }
-  else if (cmd == "REL_OFF") {
-    // if (SKIP_LOCAL_RELAY) {
-    //   debugPrint("Skipping local relay deactivation due to SKIP_LOCAL_RELAY setting");
-    //   client.publish(statusTopic.c_str(), "SKIP_LOCAL_RELAY is enabled, not deactivating relay locally");
-    //   return;
-    // }
-    digitalWrite(RELAY_PIN, LOW);
-    relayActivatedMillis = 0;
-    client.publish(statusTopic.c_str(), "Relay_OFF");
-  }
-  else if (cmd == "REL_STATUS") {
-    String st = digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF";
-    client.publish(statusTopic.c_str(), ("Relay_Status:" + st).c_str());
-  }
-  else if (cmd.startsWith("PIR_INTERVAL:")) {
-    PIR_INTERVAL = cmd.substring(13).toInt();
-    String info = "PIR_INTERVAL_set:" + String(PIR_INTERVAL);
-    client.publish(statusTopic.c_str(), info.c_str());
-} 
-  else if (cmd.startsWith("SKIP_LOCAL_RELAY:")) {
-    String value = cmd.substring(17);
-    if (value == "true" || value == "1") {
-      SKIP_LOCAL_RELAY = true;
-      client.publish(statusTopic.c_str(), "SKIP_LOCAL_RELAY set to true");
-    } else if (value == "false" || value == "0") {
-      SKIP_LOCAL_RELAY = false;
-      client.publish(statusTopic.c_str(), "SKIP_LOCAL_RELAY set to false");
-    } else {
-      client.publish(statusTopic.c_str(), "Invalid SKIP_LOCAL_RELAY value");
-    }
-
-  }
-
-  else if (cmd == "RESTART") {
-    client.publish(statusTopic.c_str(), "Restarting...");
-    delay(1000);
-    ESP.restart();
-  }
-  
-  else if (cmd.startsWith("DEBUG:")) {
-    String debugValue = cmd.substring(6);
-    if (debugValue == "true" || debugValue == "1") {
-      DEBUG = true;
-      client.publish(statusTopic.c_str(), "DEBUG mode enabled");
-    } else if (debugValue == "false" || debugValue == "0") {
-      DEBUG = false;
-      client.publish(statusTopic.c_str(), "DEBUG mode disabled");
-    } else {
-      client.publish(statusTopic.c_str(), "Invalid DEBUG value");
-    }
-  }
-  
-  else if (cmd.startsWith("GHAFEER_NAME:")) {
-    String newName = cmd.substring(13);
-    if (newName.length() > 0) {
-      GHAFEER_NAME = newName;
-      buildTopics(); // Rebuild topics with the new name
-      String msg = "GHAFEER_NAME set to: " + GHAFEER_NAME;
-      client.publish(statusTopic.c_str(), msg.c_str());
-    } else {
-      client.publish(statusTopic.c_str(), "Invalid GHAFEER_NAME value");
-    }
-  }
-  else if (cmd == "HELP") {
-    String helpMsg = "{";
-    helpMsg += "\"commands\":[";
-    helpMsg += "{\"cmd\":\"REL_ON\",\"desc\":\"Turn relay ON\"},";
-    helpMsg += "{\"cmd\":\"REL_OFF\",\"desc\":\"Turn relay OFF\"},";
-    helpMsg += "{\"cmd\":\"REL_STATUS\",\"desc\":\"Get relay status\"},";
-    helpMsg += "{\"cmd\":\"PIR_INTERVAL:<value>\",\"desc\":\"Set PIR interval in ms\"},";
-    helpMsg += "{\"cmd\":\"SKIP_LOCAL_RELAY:<true/false>\",\"desc\":\"Enable/disable local relay control\"},";
-    helpMsg += "{\"cmd\":\"RESTART\",\"desc\":\"Restart the device\"},";
-    helpMsg += "{\"cmd\":\"REBOOT\",\"desc\":\"Reboot the device\"},";
-    helpMsg += "{\"cmd\":\"STATUS\",\"desc\":\"Get device status\"},";
-    helpMsg += "{\"cmd\":\"DEBUG:<true/false>\",\"desc\":\"Enable/disable debug mode\"},";
-    helpMsg += "{\"cmd\":\"GHAFEER_NAME:<name>\",\"desc\":\"Set GHAFEER name\"}";
-    helpMsg += "]}";
-    client.publish(statusTopic.c_str(), helpMsg.c_str());
-  }
-
-  else if (cmd == "REBOOT") {
-    client.publish(statusTopic.c_str(), "Rebooting...");
-    delay(1000);
-    ESP.restart();
-  }
-  else if (cmd == "STATUS") {
-    String relStatus = digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF";
-    String info = "GHAFEER_NAME:" + String(GHAFEER_NAME) + ",Device_Status:Online,MAC:" 
-            + mac + ",IP:" + WiFi.localIP().toString() + ",SKIP_LOCAL_RELAY:" + SKIP_LOCAL_RELAY
-            + ",REL_Status:" + relStatus;
-    client.publish(statusTopic.c_str(), info.c_str());
-  }
-  else {
-    String info = "Unknown_CMD:" + cmd;
-    client.publish(statusTopic.c_str(), info.c_str());
-  }
+  handleCommand(cmd);
 }
 
 void reconnect() {
@@ -232,14 +130,17 @@ void setup() {
   // set baud rate for serial communication
   Serial.begin(115200);
   
-
   debugPrint("Starting setup...");
 
   setup_wifi();
   buildTopics();
 
   client.setServer("192.168.1.246", 1883); // RPi broker IP
+  client.setBufferSize(2048); // ensure MQTT can carry HELP payload
   client.setCallback(callback);
+
+  JsonDocument doc;
+
   debugPrint("Setup complete");
 }
 
