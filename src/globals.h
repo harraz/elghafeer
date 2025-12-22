@@ -1,7 +1,7 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
-#define MQTT_MAX_PACKET_SIZE 1024  // Increase from default 128 bytes for larger payloads
+#define MQTT_MAX_PACKET_SIZE 2048  // Increase from default 128 bytes for larger payloads
 
 #include <Arduino.h>
 #include <PubSubClient.h>

@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 #include <ESP8266WiFi.h>
+#include <string.h>
 
 // Forward declarations
 extern WiFiClient wifiClient;
@@ -38,8 +39,19 @@ static bool parseBool(const String& arg, bool& outVal) {
   return false;
 }
 
+// Extracts the value part after a known prefix (e.g., "CMD:").
+static bool extractValue(const String& cmd, const char* prefix, String& outVal) {
+  size_t prefixLen = strlen(prefix);
+  if (!cmd.startsWith(prefix)) return false;
+  outVal = cmd.substring(prefixLen);
+  outVal.trim();
+  return outVal.length() > 0;
+}
+
 void handleCommand(String cmd) {
+  // Use v7 JsonDocument; heap-backed and will grow as needed for HELP payload
   JsonDocument doc;
+
   String response;
 
   if (cmd == "REL_ON") {
@@ -59,19 +71,26 @@ void handleCommand(String cmd) {
     doc["relay_status"] = digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF";
   }
   else if (cmd.startsWith("PIR_INTERVAL:")) {
-      long temp = PIR_INTERVAL;
-      if (!parseInt(cmd.substring(13), temp, 0L, (long)MAX_PIR_INTERVAL_MS)) {
+    String value;
+    if (!extractValue(cmd, "PIR_INTERVAL:", value)) {
       doc["status"] = "error";
+      doc["message"] = "Missing PIR_INTERVAL value";
     } else {
-      PIR_INTERVAL = temp;
-      doc["status"] = "ok";
-      doc["PIR_INTERVAL"] = PIR_INTERVAL;
+      long temp = PIR_INTERVAL;
+      if (!parseInt(value, temp, 0L, (long)MAX_PIR_INTERVAL_MS)) {
+        doc["status"] = "error";
+        doc["message"] = "Invalid PIR_INTERVAL value";
+      } else {
+        PIR_INTERVAL = temp;
+        doc["status"] = "ok";
+        doc["PIR_INTERVAL"] = PIR_INTERVAL;
+      }
     }
   }
   else if (cmd.startsWith("SKIP_LOCAL_RELAY:")) {
-    String value = cmd.substring(17);
+    String value;
     bool parsedValue;
-    if (parseBool(value, parsedValue)) {
+    if (extractValue(cmd, "SKIP_LOCAL_RELAY:", value) && parseBool(value, parsedValue)) {
       SKIP_LOCAL_RELAY = parsedValue;
       doc["status"] = "ok";
       doc["SKIP_LOCAL_RELAY"] = SKIP_LOCAL_RELAY;
@@ -81,9 +100,17 @@ void handleCommand(String cmd) {
     }
   }
   else if (cmd.startsWith("RELAY_MAX_ON_DURATION:")) {
-    RELAY_MAX_ON_DURATION = cmd.substring(21).toInt();
-    doc["status"] = "ok";
-    doc["RELAY_MAX_ON_DURATION"] = RELAY_MAX_ON_DURATION;
+    String value;
+    long temp = RELAY_MAX_ON_DURATION;
+    if (extractValue(cmd, "RELAY_MAX_ON_DURATION:", value) &&
+        parseInt(value, temp, (long)MIN_RELAY_ON_DURATION_MS, (long)MAX_RELAY_ON_DURATION_MS)) {
+      RELAY_MAX_ON_DURATION = temp;
+      doc["status"] = "ok";
+      doc["RELAY_MAX_ON_DURATION"] = RELAY_MAX_ON_DURATION;
+    } else {
+      doc["status"] = "error";
+      doc["message"] = "Invalid RELAY_MAX_ON_DURATION value";
+    }
   }
   else if (cmd == "RESTART" || cmd == "REBOOT") {
     doc["status"] = "ok";
@@ -94,23 +121,20 @@ void handleCommand(String cmd) {
     ESP.restart();
   }
   else if (cmd.startsWith("DEBUG:")) {
-    String value = cmd.substring(6);
-    if (value == "true" || value == "1") {
-      DEBUG = true;
+    String value;
+    bool parsedValue;
+    if (extractValue(cmd, "DEBUG:", value) && parseBool(value, parsedValue)) {
+      DEBUG = parsedValue;
       doc["status"] = "ok";
-      doc["debug"] = "enabled";
-    } else if (value == "false" || value == "0") {
-      DEBUG = false;
-      doc["status"] = "ok";
-      doc["debug"] = "disabled";
+      doc["debug"] = DEBUG ? "enabled" : "disabled";
     } else {
       doc["status"] = "error";
       doc["message"] = "Invalid DEBUG value";
     }
   }
   else if (cmd.startsWith("GHAFEER_NAME:")) {
-    String newName = cmd.substring(13);
-    if (newName.length() > 0) {
+    String newName;
+    if (extractValue(cmd, "GHAFEER_NAME:", newName) && newName.length() > 0) {
       GHAFEER_NAME = newName;
       buildTopics();
       doc["status"] = "ok";
@@ -131,8 +155,8 @@ void handleCommand(String cmd) {
     doc["debug"] = DEBUG;
   }
   else if (cmd == "HELP") {
-    // JsonArray commands = doc.createNestedArray("commands");
-    JsonArray commands = doc["commands"].to<JsonArray>();
+    // Build help array explicitly to avoid null root quirks
+    JsonArray commands = doc.createNestedArray("commands");
 
     addHelp(commands, "REL_ON", "Turn relay ON");
     addHelp(commands, "REL_OFF", "Turn relay OFF");

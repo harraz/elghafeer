@@ -136,6 +136,7 @@ void setup() {
   buildTopics();
 
   client.setServer("192.168.1.246", 1883); // RPi broker IP
+  client.setBufferSize(2048); // ensure MQTT can carry HELP payload
   client.setCallback(callback);
 
   JsonDocument doc;
