@@ -1,5 +1,6 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
+#define MQTT_MAX_PACKET_SIZE 512  // Increase from default 128 bytes for larger payloads
 #define MIN_RELAY_ON_DURATION_MS   3000UL      // 3 s: prevents chattering / rapid toggles
 #define MAX_RELAY_ON_DURATION_MS   3600000UL   // 1 h: safety cutoff for long activations
 
