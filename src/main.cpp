@@ -1,6 +1,5 @@
 #include <ESP8266WiFi.h>
 #include "globals.h"
-#include <PubSubClient.h>
 #include "secrets.h"   // #define WIFI_SSID, WIFI_PASSWORD
 #include "handlecmds.h"
 #include <ArduinoJson.h>
