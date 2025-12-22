@@ -6,10 +6,10 @@
 #include "handlecmds.h"
 #include <ArduinoJson.h>
 
-String GHAFEER_NAME = "MARZOOQ2";
+String GHAFEER_NAME = "MARZOOQ";
 
-const int PIR_PIN    = 4;  // D2
-const int RELAY_PIN  = 12;  // D6
+const int PIR_PIN    = 2;  // D4
+const int RELAY_PIN  = 0;  // D3
 
 unsigned int PIR_INTERVAL = 60000UL; // ms (default, can change via MQTT)
 unsigned int RELAY_MAX_ON_DURATION = 60000UL; // ms
