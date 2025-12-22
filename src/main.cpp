@@ -12,7 +12,7 @@ const int PIR_PIN    = 4;  // D2
 const int RELAY_PIN  = 12;  // D6
 
 unsigned long PIR_INTERVAL = 60000; // ms (default, can change via MQTT)
-const unsigned long RELAY_MAX_ON_DURATION = 120000; // ms
+unsigned long RELAY_MAX_ON_DURATION = 60000; // ms
 bool SKIP_LOCAL_RELAY = true; // true to use local relay control, false to control other devices via MQTT
 // Note: SKIP_LOCAL_RELAY is used to skip local relay activation when motion is detected
 // and the device is configured to control the relay via MQTT only.

@@ -56,6 +56,11 @@ void handleCommand(String cmd) {
       doc["message"] = "Invalid SKIP_LOCAL_RELAY value";
     }
   }
+  else if (cmd.startsWith("RELAY_MAX_ON_DURATION:")) {
+    RELAY_MAX_ON_DURATION = cmd.substring(21).toInt();
+    doc["status"] = "ok";
+    doc["RELAY_MAX_ON_DURATION"] = RELAY_MAX_ON_DURATION;
+  }
   else if (cmd == "RESTART" || cmd == "REBOOT") {
     doc["status"] = "ok";
     doc["message"] = "Restarting...";
@@ -114,6 +119,8 @@ void handleCommand(String cmd) {
     addHelp(commands, "GHAFEER_NAME:<name>", "Set device name");
     addHelp(commands, "STATUS", "Get full device status");
     addHelp(commands, "RESTART/REBOOT", "Restart device");
+    addHelp(commands, "RELAY_MAX_ON_DURATION:<ms>", "Set relay max ON duration");
+    addHelp(commands, "HELP", "Show this help message");
   }
   else {
     doc["status"] = "error";
