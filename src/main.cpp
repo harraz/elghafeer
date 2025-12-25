@@ -9,7 +9,7 @@ String GHAFEER_NAME = "ASHRAF";
 const int PIR_PIN    = 2;  // D4
 const int RELAY_PIN  = 0;  // D3
 
-unsigned int PIR_INTERVAL = 60000UL; // ms (default, can change via MQTT)
+unsigned int PIR_INTERVAL = 30000UL; // ms (default, can change via MQTT)
 unsigned int RELAY_MAX_ON_DURATION = 60000UL; // ms
 unsigned int MAX_PIR_INTERVAL_MS = 30000UL; // ms (maximum interval between PIR detections)
 bool SKIP_LOCAL_RELAY = true; // true to use local relay control, false to control other devices via MQTT
@@ -28,6 +28,8 @@ String mac;           // No colons, uppercase
 String statusTopic;
 String motionTopic;
 String cmdTopic;
+
+bool initialized;  // thiis is to set the relay to low only once at startup
 
 void debugPrint(const String &msg) {
 #if DEBUG
@@ -88,8 +90,11 @@ void handlePIR() {
     if (!SKIP_LOCAL_RELAY) {
       digitalWrite(RELAY_PIN, HIGH);
       debugPrint("Motion ON, relay ON (local control)");
+      client.publish(statusTopic.c_str(), "Motion detected, relay activated");
+
     } else {
       debugPrint("Motion detected, but SKIP_LOCAL_RELAY is enabled, not activating relay locally");
+      client.publish(statusTopic.c_str(), "Motion detected, but SKIP_LOCAL_RELAY is enabled, not activating relay locally");
     }
     // digitalWrite(RELAY_PIN, HIGH);
     // debugPrint("Motion ON, relay ON");
@@ -101,16 +106,23 @@ void handlePIR() {
       "\",\"time\":" + String(millis()) + "}";
     client.publish(motionTopic.c_str(), payload.c_str());
 
-    if (SKIP_LOCAL_RELAY) {
-      client.publish(statusTopic.c_str(), "Motion detected, but SKIP_LOCAL_RELAY is enabled, not activating relay locally");
-    } else {
-      client.publish(statusTopic.c_str(), "Motion detected, relay activated");
-    }
+    // if (SKIP_LOCAL_RELAY) {
+    //   client.publish(statusTopic.c_str(), "Motion detected, but SKIP_LOCAL_RELAY is enabled, not activating relay locally");
+    // } else {
+    //   client.publish(statusTopic.c_str(), "Motion detected, relay activated");
+    // }
     // client.publish(statusTopic.c_str(), "Relay_ON");
   }
 }
 
 void checkRelayTimeout() {
+
+  if (initialized) {
+    initialized = false;
+    digitalWrite(RELAY_PIN, LOW);
+    debugPrint("Initial relay OFF at startup");
+  }
+  
   if (relayActivatedMillis > 0 && digitalRead(RELAY_PIN) == HIGH) {
     if (millis() - relayActivatedMillis >= RELAY_MAX_ON_DURATION) {
       digitalWrite(RELAY_PIN, LOW);
@@ -125,7 +137,9 @@ void setup() {
   // pinMode(PIR_PIN, INPUT_PULLUP);
   pinMode(PIR_PIN,   INPUT);
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
+
+  digitalWrite(RELAY_PIN, HIGH);
+  initialized = true;
 
   // set baud rate for serial communication
   Serial.begin(115200);
