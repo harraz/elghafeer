@@ -12,7 +12,6 @@
 extern const int RELAY_PIN;
 extern unsigned int PIR_INTERVAL;
 extern bool SKIP_LOCAL_RELAY;
-extern int RELAY_MIN_ON_DURATION;
 extern unsigned int RELAY_MAX_ON_DURATION;
 extern unsigned int MAX_PIR_INTERVAL_MS;
 extern bool DEBUG;

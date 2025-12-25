@@ -12,9 +12,7 @@ const int RELAY_PIN  = 0;  // D3
 unsigned int PIR_INTERVAL = 30000UL; // ms (default, can change via MQTT)
 unsigned int RELAY_MAX_ON_DURATION = 60000UL; // ms
 unsigned int MAX_PIR_INTERVAL_MS = 30000UL; // ms (maximum interval between PIR detections)
-bool SKIP_LOCAL_RELAY = true; // true to use local relay control, false to control other devices via MQTT
-// Note: SKIP_LOCAL_RELAY is used to skip local relay activation when motion is detected
-// and the device is configured to control the relay via MQTT only.
+bool SKIP_LOCAL_RELAY = true; // true to skip local relay activation (MQTT-only control), false to toggle the relay locally
 
 bool DEBUG = false; // Set to true for debug messages, false for normal operation
 
@@ -32,9 +30,9 @@ String cmdTopic;
 bool initialized;  // thiis is to set the relay to low only once at startup
 
 void debugPrint(const String &msg) {
-#if DEBUG
-  Serial.println(msg);
-#endif
+  if (DEBUG) {
+    Serial.println(msg);
+  }
 }
 
 void setup_wifi() {
@@ -83,36 +81,27 @@ void reconnect() {
 }
 
 void handlePIR() {
-  if (relayActivatedMillis == 0) {
-    
-    relayActivatedMillis = millis(); // Reset the timer when motion is detected
-
-    if (!SKIP_LOCAL_RELAY) {
-      digitalWrite(RELAY_PIN, HIGH);
-      debugPrint("Motion ON, relay ON (local control)");
-      client.publish(statusTopic.c_str(), "Motion detected, relay activated");
-
-    } else {
-      debugPrint("Motion detected, but SKIP_LOCAL_RELAY is enabled, not activating relay locally");
-      client.publish(statusTopic.c_str(), "Motion detected, but SKIP_LOCAL_RELAY is enabled, not activating relay locally");
-    }
-    // digitalWrite(RELAY_PIN, HIGH);
-    // debugPrint("Motion ON, relay ON");
-
-    // Publish motion detection as JSON
-    String payload = "{\"motion\":true,\"mac\":\"" + mac +
-      "\",\"location\":\"" + String(GHAFEER_NAME) +
-      "\",\"ip\":\"" + WiFi.localIP().toString() +
-      "\",\"time\":" + String(millis()) + "}";
-    client.publish(motionTopic.c_str(), payload.c_str());
-
-    // if (SKIP_LOCAL_RELAY) {
-    //   client.publish(statusTopic.c_str(), "Motion detected, but SKIP_LOCAL_RELAY is enabled, not activating relay locally");
-    // } else {
-    //   client.publish(statusTopic.c_str(), "Motion detected, relay activated");
-    // }
-    // client.publish(statusTopic.c_str(), "Relay_ON");
+  // When SKIP_LOCAL_RELAY is true we still want to report motion; only gate re-entry while relay is on.
+  if (relayActivatedMillis != 0 && !SKIP_LOCAL_RELAY) {
+    return;
   }
+
+  if (!SKIP_LOCAL_RELAY) {
+    relayActivatedMillis = millis();
+    digitalWrite(RELAY_PIN, HIGH);
+    debugPrint("Motion ON, relay ON (local control)");
+    client.publish(statusTopic.c_str(), "Motion detected, relay activated");
+  } else {
+    debugPrint("Motion detected, SKIP_LOCAL_RELAY enabled (no local relay)");
+    client.publish(statusTopic.c_str(), "Motion detected, SKIP_LOCAL_RELAY enabled (no local relay)");
+  }
+
+  // Publish motion detection as JSON
+  String payload = "{\"motion\":true,\"mac\":\"" + mac +
+    "\",\"location\":\"" + String(GHAFEER_NAME) +
+    "\",\"ip\":\"" + WiFi.localIP().toString() +
+    "\",\"time\":" + String(millis()) + "}";
+  client.publish(motionTopic.c_str(), payload.c_str());
 }
 
 void checkRelayTimeout() {
@@ -134,7 +123,6 @@ void checkRelayTimeout() {
 }
 
 void setup() {
-  // pinMode(PIR_PIN, INPUT_PULLUP);
   pinMode(PIR_PIN,   INPUT);
   pinMode(RELAY_PIN, OUTPUT);
 
@@ -153,8 +141,6 @@ void setup() {
   client.setBufferSize(2048); // ensure MQTT can carry HELP payload
   client.setCallback(callback);
 
-  JsonDocument doc;
-
   debugPrint("Setup complete");
 }
 
@@ -171,7 +157,6 @@ void loop() {
   if (now - lastMillis >= PIR_INTERVAL) {
     bool motion = (digitalRead(PIR_PIN) == HIGH);
     if (motion) {
-      relayActivatedMillis = 0;
       lastMillis = now;
       handlePIR();
     }

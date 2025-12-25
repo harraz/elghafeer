@@ -8,7 +8,6 @@
 #include <string.h>
 
 // Forward declarations
-extern WiFiClient wifiClient;
 extern PubSubClient client;
 extern String statusTopic;
 
@@ -180,7 +179,6 @@ void handleCommand(String cmd) {
 }
 
 void addHelp(JsonArray arr, const char* cmd, const char* desc) {
-  // JsonObject obj = arr.createNestedObject();
   JsonObject obj = arr.add<JsonObject>();
   obj["cmd"] = cmd;
   obj["desc"] = desc;
