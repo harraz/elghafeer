@@ -95,8 +95,8 @@ void goToSleep(bool publishStatus = true) {
 }
 
 void setup() {
+  digitalWrite(RELAY_PIN, LOW);  // preset output level before enabling pin to avoid boot pulse
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);  // default OFF
   Serial.begin(115200);
   debugPrint("Booting after motion...");
 
