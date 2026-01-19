@@ -11,7 +11,7 @@ JsonDocument doc;
 
 const int RELAY_PIN  = 12;  // D6
 
-String GHAFEER_NAME = "ABBAS";
+String GHAFEER_NAME = "MARZOOK";  // change this to your ghafeer name
 bool relayOn = false;
 unsigned long lastRelayOnMs = 0;
 bool DEBUG = false;
