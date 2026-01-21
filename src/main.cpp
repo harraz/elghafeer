@@ -1,8 +1,10 @@
 #include <ESP8266WiFi.h>
-#include <PubSubClient.h>
+#include "globals.h"
 #include "secrets.h"   // #define WIFI_SSID, WIFI_PASSWORD
+#include "handlecmds.h"
+#include <ArduinoJson.h>
 
-String GHAFEER_NAME = "DAHROOG";
+String GHAFEER_NAME = "MARZOOQ";
 
 const int PIR_PIN    = 4;  // D2
 const int RELAY_PIN  = 12;  // D6
@@ -31,8 +33,8 @@ const unsigned long MIN_MOTION_PUBLISH_INTERVAL = 5000; // 5s cooldown between p
 
 bool DEBUG = false; // Set to true for debug messages, false for normal operation
 
-unsigned long lastMillis = 0;
-unsigned long relayActivatedMillis = 0;
+unsigned int lastMillis = 0;
+unsigned int relayActivatedMillis = 0;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -42,10 +44,12 @@ String statusTopic;
 String motionTopic;
 String cmdTopic;
 
+bool initialized;  // thiis is to set the relay to low only once at startup
+
 void debugPrint(const String &msg) {
-#if DEBUG
-  Serial.println(msg);
-#endif
+  if (DEBUG) {
+    Serial.println(msg);
+  }
 }
 
 void setup_wifi() {
@@ -291,6 +295,13 @@ if (relayActivatedMillis == 0) {
 }
 
 void checkRelayTimeout() {
+
+  if (initialized) {
+    initialized = false;
+    digitalWrite(RELAY_PIN, LOW);
+    debugPrint("Initial relay OFF at startup");
+  }
+  
   if (relayActivatedMillis > 0 && digitalRead(RELAY_PIN) == HIGH) {
     if (millis() - relayActivatedMillis >= RELAY_MAX_ON_DURATION) {
       digitalWrite(RELAY_PIN, LOW);
@@ -302,15 +313,15 @@ void checkRelayTimeout() {
 }
 
 void setup() {
-  // pinMode(PIR_PIN, INPUT_PULLUP);
   pinMode(PIR_PIN,   INPUT);
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
+
+  digitalWrite(RELAY_PIN, HIGH);
+  initialized = true;
 
   // set baud rate for serial communication
   Serial.begin(115200);
   
-
   debugPrint("Starting setup...");
 
   setup_wifi();
@@ -318,7 +329,9 @@ void setup() {
 
   client.setBufferSize(1024);   // for larger MQTT messages
   client.setServer("192.168.1.246", 1883); // RPi broker IP
+  client.setBufferSize(2048); // ensure MQTT can carry HELP payload
   client.setCallback(callback);
+
   debugPrint("Setup complete");
 }
 
