@@ -4,7 +4,7 @@
 #include "handlecmds.h"
 #include <ArduinoJson.h>
 
-String GHAFEER_NAME = "MARZOOQ";
+String GHAFEER_NAME = "ASHRAF";
 
 const int PIR_PIN    = 2;  // D4
 const int RELAY_PIN  = 0;  // D3
