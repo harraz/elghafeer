@@ -16,9 +16,9 @@ bool relayOn = false;
 unsigned long lastRelayOnMs = 0;
 bool DEBUG = false;
 
-unsigned int RELAY_ON_DURATION_MS = 3000;   // how long relay stays ON
-const unsigned long AWAKE_WINDOW_MS      = 18000;   // total time awake before sleep
-const unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000;
+unsigned int RELAY_ON_DURATION_MS = 140000;   // how long relay stays ON
+const unsigned long AWAKE_WINDOW_MS      = 160000;   // total time awake before sleep
+const unsigned long WIFI_CONNECT_TIMEOUT_MS = 18000;
 const unsigned long MQTT_CONNECT_TIMEOUT_MS = 8000;
 const char* MQTT_SERVER = "192.168.1.246";
 const int   MQTT_PORT   = 1883;
