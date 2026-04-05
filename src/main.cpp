@@ -1,6 +1,7 @@
 #include <ESP8266WiFi.h>
 #include <EEPROM.h>
 #include <PubSubClient.h>
+#include "config.h"
 #include "secrets.h"   // WIFI_SSID, WIFI_PASSWORD
 
 #include <stdio.h>
@@ -16,34 +17,11 @@ JsonDocument doc;
 const char* FW_GIT_BRANCH = BUILD_GIT_BRANCH;
 const char* FW_GIT_SHA = BUILD_GIT_SHA;
 
-const int RELAY_PIN  = 12;  // D6
-
-String GHAFEER_NAME = "ABBAS";  // change this to your ghafeer name
 bool relayOn = false;
 unsigned long lastRelayOnMs = 0;
-bool DEBUG = false;
 
-unsigned int RELAY_ON_DURATION_MS = 10000;   // actual randomized duration for this wake
-const unsigned int RELAY_ON_MIN_DURATION_MS = 7000;
-const unsigned int RELAY_ON_MAX_DURATION_MS = 10000;
-// How long the ESP stays awake after an accepted trigger. This window needs to
-// be long enough for the randomized relay ON time plus a small margin to turn
-// the relay back off cleanly before sleep.
-const unsigned long AWAKE_WINDOW_MS      = 12000;
-const unsigned long WIFI_CONNECT_TIMEOUT_MS = 8000;
-const unsigned long MQTT_CONNECT_TIMEOUT_MS = 3000;
-const unsigned long TIME_SYNC_TIMEOUT_MS = 4000;
-const unsigned long TRIGGER_WINDOW_MS = 30000;
-const uint32_t MAX_ACCEPTED_IN_WINDOW = 2;
-const unsigned long LOCKOUT_MS = 300000;
-// Any epoch larger than this is treated as "real" time that came from NTP,
-// not the default zero/uninitialized clock value seen at boot.
-const time_t MIN_VALID_EPOCH = 1700000000UL;
-const char* MQTT_SERVER = "192.168.1.246";
-const int   MQTT_PORT   = 1883;
-const uint32_t EEPROM_STATE_MARKER = 0x47524652;
-const int EEPROM_SIZE_BYTES = 64;
-const int EEPROM_STATE_ADDR = 0;
+// The actual relay ON duration chosen for the current accepted wake.
+unsigned int currentRelayOnDurationMs = RELAY_ON_MAX_DURATION_MS;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -152,14 +130,22 @@ enum TriggerDecision {
 // Decide whether this wake should be accepted, blocked because the device is
 // already in lockout, or blocked because it just exceeded the rate limit.
 TriggerDecision evaluateTrigger(time_t nowEpoch, PersistedThrottleState &state) {
+  // Load the last saved limiter state from EEPROM.
+  // If nothing valid was saved yet, start from an empty state.
   if (!readPersistedThrottleState(state)) {
     state = {EEPROM_STATE_MARKER, 0, 0, 0, 0, 0};
   }
 
+  // If the device is still inside a previously started lockout period,
+  // reject this wake immediately.
   if (state.cooldownUntilEpoch > 0 && nowEpoch < state.cooldownUntilEpoch) {
     return SUPPRESS_IN_LOCKOUT;
   }
 
+  // Start a new counting window when:
+  // - this is the first valid trigger we have seen,
+  // - the saved window start time is somehow in the future,
+  // - or the old window has already expired.
   if (state.windowStartEpoch == 0 ||
       nowEpoch < state.windowStartEpoch ||
       static_cast<uint32_t>(nowEpoch - state.windowStartEpoch) >= (TRIGGER_WINDOW_MS / 1000UL)) {
@@ -168,12 +154,15 @@ TriggerDecision evaluateTrigger(time_t nowEpoch, PersistedThrottleState &state) 
     state.cooldownUntilEpoch = 0;
   }
 
+  // If we have already accepted as many triggers as allowed in this window,
+  // start a lockout period and reject this wake.
   if (state.acceptedCountInWindow >= MAX_ACCEPTED_IN_WINDOW) {
     state.cooldownUntilEpoch = static_cast<uint32_t>(nowEpoch + (LOCKOUT_MS / 1000UL));
     writePersistedThrottleState(state);
     return SUPPRESS_RATE_LIMIT;
   }
 
+  // Otherwise this wake is allowed.
   return ACCEPT_TRIGGER;
 }
 
@@ -191,11 +180,18 @@ void publishStatusStep(const String &msg) {
 }
 
 void publishFirmwareIdentity() {
-  if (!DEBUG || !client.connected()) {
+  String versionMsg = "Firmware:" + String(FW_GIT_BRANCH) + "@" + String(FW_GIT_SHA);
+
+  // Print to serial in debug builds so the flashed branch/SHA can be seen
+  // even when MQTT is not being watched.
+  debugPrint(versionMsg);
+
+  // Always publish the firmware identity when MQTT is connected so the running
+  // branch/commit can be identified later without rebuilding the firmware.
+  if (!client.connected()) {
     return;
   }
 
-  String versionMsg = "Firmware:" + String(FW_GIT_BRANCH) + "@" + String(FW_GIT_SHA);
   client.publish(statusTopic.c_str(), versionMsg.c_str());
 }
 
@@ -220,8 +216,8 @@ void buildTopics() {
   mac = WiFi.macAddress();
   mac.replace(":", "");
   mac.toUpperCase();
-  statusTopic = "home/" + GHAFEER_NAME + "/" + mac + "/status";
-  motionTopic = "home/" + GHAFEER_NAME + "/" + mac + "/motion";
+  statusTopic = "home/" + String(GHAFEER_NAME) + "/" + mac + "/status";
+  motionTopic = "home/" + String(GHAFEER_NAME) + "/" + mac + "/motion";
 }
 
 void goToSleep(bool publishStatus = true) {
@@ -340,13 +336,13 @@ void setup() {
   }
   // Pick a random relay ON duration inside the allowed range for this wake.
   uint32_t randomRange = RELAY_ON_MAX_DURATION_MS - RELAY_ON_MIN_DURATION_MS + 1;
-  RELAY_ON_DURATION_MS = RELAY_ON_MIN_DURATION_MS + (ESP.random() % randomRange);
+  currentRelayOnDurationMs = RELAY_ON_MIN_DURATION_MS + (ESP.random() % randomRange);
 
   doc["motion"] = true;
   doc["mac"] = mac;
   doc["location"] = GHAFEER_NAME;
   doc["ip"] = WiFi.localIP().toString();
-  doc["relay_duration_ms"] = RELAY_ON_DURATION_MS;
+  doc["relay_duration_ms"] = currentRelayOnDurationMs;
   doc["awake_window_ms"] = AWAKE_WINDOW_MS;
 
   // Publish the motion payload for an accepted trigger.
@@ -383,7 +379,7 @@ void setup() {
     suppressedWakeCount = 0;
   }
 
-  publishStatusStep("Relay duration ms:" + String(RELAY_ON_DURATION_MS));
+  publishStatusStep("Relay duration ms:" + String(currentRelayOnDurationMs));
   client.publish(motionTopic.c_str(), payload.c_str());
   publishStatusStep("Motion event published");
 
@@ -400,7 +396,7 @@ void setup() {
     client.loop();
 
     // Turn relay OFF when duration elapsed
-    if (relayOn && millis() - lastRelayOnMs >= RELAY_ON_DURATION_MS) {
+    if (relayOn && millis() - lastRelayOnMs >= currentRelayOnDurationMs) {
       digitalWrite(RELAY_PIN, LOW);
       relayOn = false;
       client.publish(statusTopic.c_str(), "Relay OFF (timer expired)");

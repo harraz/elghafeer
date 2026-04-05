@@ -1,0 +1,88 @@
+@startuml
+title ESP8266 PIR Reset Wake With EEPROM/NTP Throttle
+
+actor PIR
+participant "ESP8266" as ESP
+participant "WiFi" as WIFI
+participant "MQTT" as MQTT
+participant "NTP" as NTP
+database "EEPROM" as EEPROM
+participant "Relay" as RELAY
+
+PIR -> ESP : Pull RST low
+activate ESP
+
+ESP -> ESP : Boot and init relay output LOW
+ESP -> EEPROM : Begin EEPROM access
+
+ESP -> WIFI : Connect
+alt Wi-Fi timeout
+  ESP -> ESP : Deep sleep
+  deactivate ESP
+else Wi-Fi connected
+  ESP -> MQTT : Connect
+  alt MQTT timeout
+    ESP -> ESP : Deep sleep
+    deactivate ESP
+  else MQTT connected
+    ESP -> MQTT : Publish firmware identity
+
+    opt DEBUG enabled
+      ESP -> MQTT : Publish debug breadcrumbs
+    end
+
+    ESP -> EEPROM : Read saved limiter state
+    ESP -> NTP : Sync wall-clock time
+
+    alt NTP success
+      ESP -> EEPROM : Evaluate trigger window and lockout
+
+      alt Lockout active
+        ESP -> EEPROM : Increment suppressedWakeCount
+        ESP -> MQTT : Publish "Wake suppressed: lockout active, count:N"
+        ESP -> ESP : Deep sleep
+        deactivate ESP
+      else Rate limit exceeded
+        ESP -> EEPROM : Increment suppressedWakeCount
+        ESP -> MQTT : Publish "Wake suppressed: rate limit exceeded, count:N"
+        ESP -> ESP : Deep sleep
+        deactivate ESP
+      else Accepted
+        ESP -> EEPROM : Update windowStartEpoch
+        ESP -> EEPROM : Increment acceptedCountInWindow
+        ESP -> EEPROM : Clear cooldownUntilEpoch
+        ESP -> EEPROM : Clear suppressedWakeCount
+      end
+    else NTP failed
+      ESP -> ESP : Continue without throttle decision
+    end
+
+    alt Previous suppressed wakes exist
+      ESP -> MQTT : Publish "Suppressed_wakes:N"
+      ESP -> EEPROM : Clear suppressedWakeCount
+    end
+
+    ESP -> ESP : Randomize currentRelayOnDurationMs
+    ESP -> MQTT : Publish motion payload
+    ESP -> RELAY : ON
+    ESP -> MQTT : Publish "Relay ON (local motion trigger)"
+
+    loop For awake window
+      alt Relay duration elapsed
+        ESP -> RELAY : OFF
+        ESP -> MQTT : Publish "Relay OFF (timer expired)"
+      end
+    end
+
+    opt DEBUG enabled
+      ESP -> MQTT : Publish throttle-state snapshot
+    end
+
+    ESP -> MQTT : Publish "Going to deep sleep..."
+    ESP -> WIFI : Disconnect
+    ESP -> ESP : Short settle delay
+    ESP -> ESP : Deep sleep until next RST
+    deactivate ESP
+  end
+end
+@enduml
