@@ -10,6 +10,12 @@
 
 JsonDocument doc;
 
+// These values are injected by PlatformIO at build time from the current Git
+// branch and commit. They make it possible to identify exactly which firmware
+// source version was flashed onto the device.
+const char* FW_GIT_BRANCH = BUILD_GIT_BRANCH;
+const char* FW_GIT_SHA = BUILD_GIT_SHA;
+
 const int RELAY_PIN  = 12;  // D6
 
 String GHAFEER_NAME = "ABBAS";  // change this to your ghafeer name
@@ -20,14 +26,22 @@ bool DEBUG = false;
 unsigned int RELAY_ON_DURATION_MS = 10000;   // actual randomized duration for this wake
 const unsigned int RELAY_ON_MIN_DURATION_MS = 7000;
 const unsigned int RELAY_ON_MAX_DURATION_MS = 10000;
-const unsigned long AWAKE_WINDOW_MS      = 18000;   // total time awake before sleep
-const unsigned long WIFI_CONNECT_TIMEOUT_MS = 18000;
-const unsigned long MQTT_CONNECT_TIMEOUT_MS = 8000;
-const unsigned long TIME_SYNC_TIMEOUT_MS = 15000;
-const unsigned long TRIGGER_COOLDOWN_MS = 10000;
+// How long the ESP stays awake after an accepted trigger. This window needs to
+// be long enough for the randomized relay ON time plus a small margin to turn
+// the relay back off cleanly before sleep.
+const unsigned long AWAKE_WINDOW_MS      = 12000;
+const unsigned long WIFI_CONNECT_TIMEOUT_MS = 8000;
+const unsigned long MQTT_CONNECT_TIMEOUT_MS = 3000;
+const unsigned long TIME_SYNC_TIMEOUT_MS = 4000;
+const unsigned long TRIGGER_WINDOW_MS = 30000;
+const uint32_t MAX_ACCEPTED_IN_WINDOW = 2;
+const unsigned long LOCKOUT_MS = 300000;
+// Any epoch larger than this is treated as "real" time that came from NTP,
+// not the default zero/uninitialized clock value seen at boot.
+const time_t MIN_VALID_EPOCH = 1700000000UL;
 const char* MQTT_SERVER = "192.168.1.246";
 const int   MQTT_PORT   = 1883;
-const uint32_t EEPROM_STATE_MAGIC = 0x47524652;
+const uint32_t EEPROM_STATE_MARKER = 0x47524652;
 const int EEPROM_SIZE_BYTES = 64;
 const int EEPROM_STATE_ADDR = 0;
 
@@ -37,81 +51,160 @@ PubSubClient client(espClient);
 String mac;
 String statusTopic;
 String motionTopic;
-String cmdTopic;
 
+// This struct is the small block of data we store in EEPROM.
+// EEPROM is used here so the saved values survive resets and full power loss.
 struct PersistedThrottleState {
-  uint32_t magic;
+  // A fixed marker that lets us tell whether EEPROM contains our data format.
+  uint32_t formatMarker;
+  // A quick integrity check so broken or random EEPROM contents are ignored.
   uint32_t checksum;
-  uint32_t lastAcceptedEpoch;
+  // The Unix time, in seconds, when the current counting window started.
+  uint32_t windowStartEpoch;
+  // How many accepted wakes happened inside the current window.
+  uint32_t acceptedCountInWindow;
+  // If non-zero and still in the future, all triggers are suppressed until this time.
+  uint32_t cooldownUntilEpoch;
+  // How many wakes were blocked since the last accepted wake.
   uint32_t suppressedWakeCount;
 };
 
 uint32_t calculateChecksum(const PersistedThrottleState &state) {
-  return state.magic ^ state.lastAcceptedEpoch ^ state.suppressedWakeCount ^ 0xA5A5A5A5;
+  // Build one number from the important fields so we can later detect whether
+  // the EEPROM contents were corrupted or do not match what we previously wrote.
+  //
+  // XOR (`^`) compares numbers bit-by-bit and mixes them together into a new
+  // value. We use it here because it is cheap on a microcontroller and good
+  // enough for a simple "does this still look like my saved data?" check.
+  //
+  // This is not encryption and it is not meant to stop tampering. It is only
+  // meant to catch obviously invalid or random EEPROM contents.
+  uint32_t checksum = state.formatMarker;
+  checksum ^= state.windowStartEpoch;
+  checksum ^= state.acceptedCountInWindow;
+  checksum ^= state.cooldownUntilEpoch;
+  checksum ^= state.suppressedWakeCount;
+  checksum ^= 0xA5A5A5A5;
+  return checksum;
 }
 
 bool readPersistedThrottleState(PersistedThrottleState &state) {
+  // Copy the raw bytes from EEPROM into the struct in RAM.
   EEPROM.get(EEPROM_STATE_ADDR, state);
-  if (state.magic != EEPROM_STATE_MAGIC) {
+  // If the marker does not match, EEPROM does not contain our saved state yet.
+  if (state.formatMarker != EEPROM_STATE_MARKER) {
     return false;
   }
+  // Only accept the stored state if the checksum still matches.
   return state.checksum == calculateChecksum(state);
 }
 
 void writePersistedThrottleState(const PersistedThrottleState &sourceState) {
+  // Copy the caller's values so we can add the checksum before writing.
   PersistedThrottleState state = sourceState;
+  // Fill in the checksum field from the other values.
   state.checksum = calculateChecksum(state);
+  // Write the struct into EEPROM.
   EEPROM.put(EEPROM_STATE_ADDR, state);
+  // Flush the write so it is actually committed to flash-backed EEPROM storage.
   EEPROM.commit();
 }
 
+// Ask NTP servers for the current wall-clock time.
+// This function stops waiting when one of these happens:
+// 1. a believable Unix timestamp is received,
+// 2. the time-sync timeout is reached.
 bool syncTime() {
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-  unsigned long start = millis();
+  unsigned long syncStartedAt = millis();
 
-  while (millis() - start < TIME_SYNC_TIMEOUT_MS) {
+  while (millis() - syncStartedAt < TIME_SYNC_TIMEOUT_MS) {
     time_t now = time(nullptr);
-    if (now > 1700000000) {
+    // Before NTP finishes, `time(nullptr)` is usually 0 or another invalid value.
+    // After NTP succeeds, it becomes a real Unix timestamp.
+    if (now > MIN_VALID_EPOCH) {
       return true;
     }
+    // Wait a short time before checking again so we do not spin in a tight loop.
     delay(250);
   }
 
   return false;
 }
 
-bool isTriggerThrottled(time_t nowEpoch, PersistedThrottleState &state) {
-  if (!readPersistedThrottleState(state)) {
-    return false;
-  }
-
-  return nowEpoch >= state.lastAcceptedEpoch &&
-         static_cast<uint32_t>(nowEpoch - state.lastAcceptedEpoch) < (TRIGGER_COOLDOWN_MS / 1000UL);
-}
-
+// Increase the suppressed-wake counter so the next accepted wake can report
+// how many recent triggers were blocked while the ESP was repeatedly waking.
 void recordSuppressedWake() {
   PersistedThrottleState state;
   if (!readPersistedThrottleState(state)) {
-    state = {EEPROM_STATE_MAGIC, 0, 0, 0};
+    state = {EEPROM_STATE_MARKER, 0, 0, 0, 0, 0};
   }
   state.suppressedWakeCount++;
   writePersistedThrottleState(state);
+}
+
+enum TriggerDecision {
+  ACCEPT_TRIGGER,
+  SUPPRESS_IN_LOCKOUT,
+  SUPPRESS_RATE_LIMIT
+};
+
+// Decide whether this wake should be accepted, blocked because the device is
+// already in lockout, or blocked because it just exceeded the rate limit.
+TriggerDecision evaluateTrigger(time_t nowEpoch, PersistedThrottleState &state) {
+  if (!readPersistedThrottleState(state)) {
+    state = {EEPROM_STATE_MARKER, 0, 0, 0, 0, 0};
+  }
+
+  if (state.cooldownUntilEpoch > 0 && nowEpoch < state.cooldownUntilEpoch) {
+    return SUPPRESS_IN_LOCKOUT;
+  }
+
+  if (state.windowStartEpoch == 0 ||
+      nowEpoch < state.windowStartEpoch ||
+      static_cast<uint32_t>(nowEpoch - state.windowStartEpoch) >= (TRIGGER_WINDOW_MS / 1000UL)) {
+    state.windowStartEpoch = static_cast<uint32_t>(nowEpoch);
+    state.acceptedCountInWindow = 0;
+    state.cooldownUntilEpoch = 0;
+  }
+
+  if (state.acceptedCountInWindow >= MAX_ACCEPTED_IN_WINDOW) {
+    state.cooldownUntilEpoch = static_cast<uint32_t>(nowEpoch + (LOCKOUT_MS / 1000UL));
+    writePersistedThrottleState(state);
+    return SUPPRESS_RATE_LIMIT;
+  }
+
+  return ACCEPT_TRIGGER;
 }
 
 void debugPrint(const String &msg) {
   if (DEBUG) Serial.println(msg);
 }
 
+// Publish debug-only breadcrumbs to the MQTT status topic.
+// These messages are useful during development but are intentionally hidden in
+// normal operation so the status topic only shows operational events.
 void publishStatusStep(const String &msg) {
-  if (client.connected()) {
+  if (DEBUG && client.connected()) {
     client.publish(statusTopic.c_str(), msg.c_str());
   }
 }
 
+void publishFirmwareIdentity() {
+  if (!DEBUG || !client.connected()) {
+    return;
+  }
+
+  String versionMsg = "Firmware:" + String(FW_GIT_BRANCH) + "@" + String(FW_GIT_SHA);
+  client.publish(statusTopic.c_str(), versionMsg.c_str());
+}
+
+// Connect to Wi-Fi, but stop trying once the Wi-Fi timeout expires.
 bool setup_wifi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  unsigned long t0 = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - t0 < WIFI_CONNECT_TIMEOUT_MS)) {
+  unsigned long wifiStartedAt = millis();
+  while (WiFi.status() != WL_CONNECTED &&
+         (millis() - wifiStartedAt < WIFI_CONNECT_TIMEOUT_MS)) {
     delay(500);
     debugPrint("Connecting...");
   }
@@ -129,48 +222,50 @@ void buildTopics() {
   mac.toUpperCase();
   statusTopic = "home/" + GHAFEER_NAME + "/" + mac + "/status";
   motionTopic = "home/" + GHAFEER_NAME + "/" + mac + "/motion";
-  cmdTopic    = "home/" + GHAFEER_NAME + "/" + mac + "/cmd";
-}
-
-void callback(char* topic, byte* payload, unsigned int length) {
-  String cmd; cmd.reserve(length+1);
-  for (unsigned int i=0; i<length; i++) cmd += (char)payload[i];
-  cmd.trim();
-
-  if (cmd == "REL_ON") {
-    digitalWrite(RELAY_PIN, HIGH);
-    relayOn = true;
-    lastRelayOnMs = millis();
-    client.publish(statusTopic.c_str(), "Relay forced ON (MQTT)");
-  } 
-  else if (cmd == "REL_OFF") {
-    digitalWrite(RELAY_PIN, LOW);
-    relayOn = false;
-    client.publish(statusTopic.c_str(), "Relay forced OFF (MQTT)");
-  }
-  else if (cmd == "PING") {
-    client.publish(statusTopic.c_str(), "Awake and responding");
-  }
 }
 
 void goToSleep(bool publishStatus = true) {
+  // If MQTT is connected, send one last status message before sleeping.
   if (publishStatus && client.connected()) {
     client.publish(statusTopic.c_str(), "Going to deep sleep...");
-    delay(150);
+    delay(75);
     client.disconnect();
   }
+  // Turn Wi-Fi off before sleeping to reduce power usage and clean up state.
   if (WiFi.isConnected()) {
     WiFi.disconnect(true);
   }
   debugPrint("Sleeping...");
-  delay(2000);  // wait 2s to let PIR output go LOW
+  delay(1500);  // wait briefly to let the PIR/reset path settle before sleeping
   ESP.deepSleep(0);   // forever, until RST triggered (PIR)
+}
+
+void publishThrottleStateSnapshot() {
+  // This snapshot is diagnostic-only. It helps explain what the persisted
+  // limiter state looked like right before sleep, but it is too noisy to keep
+  // on the status topic during normal operation.
+  if (!DEBUG || !client.connected()) {
+    return;
+  }
+
+  PersistedThrottleState state;
+  if (!readPersistedThrottleState(state)) {
+    client.publish(statusTopic.c_str(), "Throttle_state:missing");
+    return;
+  }
+
+  String snapshot = "Throttle_state:window_start=" + String(state.windowStartEpoch) +
+                    ",accepted=" + String(state.acceptedCountInWindow) +
+                    ",lockout_until=" + String(state.cooldownUntilEpoch) +
+                    ",suppressed=" + String(state.suppressedWakeCount);
+  client.publish(statusTopic.c_str(), snapshot.c_str());
 }
 
 void setup() {
   digitalWrite(RELAY_PIN, LOW);  // preset output level before enabling pin to avoid boot pulse
   pinMode(RELAY_PIN, OUTPUT);
   Serial.begin(115200);
+  // Prepare EEPROM access before reading or writing saved throttle state.
   EEPROM.begin(EEPROM_SIZE_BYTES);
   debugPrint("Booting after motion...");
 
@@ -180,10 +275,10 @@ void setup() {
   buildTopics();
 
   client.setServer(MQTT_SERVER, MQTT_PORT);
-  client.setCallback(callback);
 
-  unsigned long mqttStart = millis();
-  while (!client.connected() && (millis() - mqttStart < MQTT_CONNECT_TIMEOUT_MS)) {
+  unsigned long mqttStartedAt = millis();
+  while (!client.connected() &&
+         (millis() - mqttStartedAt < MQTT_CONNECT_TIMEOUT_MS)) {
     client.connect(mac.c_str());
     delay(500);
   }
@@ -192,6 +287,7 @@ void setup() {
     goToSleep(false);
   }
 
+  publishFirmwareIdentity();
   publishStatusStep("Boot complete: WiFi and MQTT connected");
 
   PersistedThrottleState persistedState;
@@ -200,7 +296,7 @@ void setup() {
     suppressedWakeCount = persistedState.suppressedWakeCount;
     publishStatusStep("Persisted state loaded");
   } else {
-    persistedState = {EEPROM_STATE_MAGIC, 0, 0, 0};
+    persistedState = {EEPROM_STATE_MARKER, 0, 0, 0, 0, 0};
     publishStatusStep("Persisted state missing; starting fresh");
   }
 
@@ -210,23 +306,39 @@ void setup() {
     time_t nowEpoch = time(nullptr);
     publishStatusStep("Time sync OK; epoch:" + String(static_cast<unsigned long>(nowEpoch)));
 
-    if (isTriggerThrottled(nowEpoch, persistedState)) {
+    TriggerDecision decision = evaluateTrigger(nowEpoch, persistedState);
+
+    if (decision == SUPPRESS_IN_LOCKOUT) {
       recordSuppressedWake();
-      publishStatusStep("Wake suppressed: cooldown active");
+      PersistedThrottleState updatedState;
+      uint32_t suppressedCount = 0;
+      if (readPersistedThrottleState(updatedState)) {
+        suppressedCount = updatedState.suppressedWakeCount;
+      }
+      String statusMsg = "Wake suppressed: lockout active, count:" + String(suppressedCount);
+      client.publish(statusTopic.c_str(), statusMsg.c_str());
       goToSleep(false);
     }
 
-    if (persistedState.lastAcceptedEpoch > 0) {
-      publishStatusStep("Wake accepted; last accepted epoch:" + String(persistedState.lastAcceptedEpoch));
+    if (decision == SUPPRESS_RATE_LIMIT) {
+      recordSuppressedWake();
+      PersistedThrottleState updatedState;
+      uint32_t suppressedCount = 0;
+      if (readPersistedThrottleState(updatedState)) {
+        suppressedCount = updatedState.suppressedWakeCount;
+      }
+      String statusMsg = "Wake suppressed: rate limit exceeded, count:" + String(suppressedCount);
+      client.publish(statusTopic.c_str(), statusMsg.c_str());
+      goToSleep(false);
+    }
+
+    if (persistedState.windowStartEpoch > 0) {
+      publishStatusStep("Wake accepted; current window started at epoch:" + String(persistedState.windowStartEpoch));
     } else {
-      publishStatusStep("Wake accepted; no previous accepted epoch");
+      publishStatusStep("Wake accepted; starting first window");
     }
   }
-
-
-  // Stay awake for both relay duration and MQTT commands
-  unsigned long start = millis();
-
+  // Pick a random relay ON duration inside the allowed range for this wake.
   uint32_t randomRange = RELAY_ON_MAX_DURATION_MS - RELAY_ON_MIN_DURATION_MS + 1;
   RELAY_ON_DURATION_MS = RELAY_ON_MIN_DURATION_MS + (ESP.random() % randomRange);
 
@@ -237,14 +349,24 @@ void setup() {
   doc["relay_duration_ms"] = RELAY_ON_DURATION_MS;
   doc["awake_window_ms"] = AWAKE_WINDOW_MS;
 
-  // Publish motion message
+  // Publish the motion payload for an accepted trigger.
   String payload;
   serializeJson(doc, payload);
 
   time_t acceptedEpoch = time(nullptr);
-  if (acceptedEpoch > 1700000000) {
-    persistedState.magic = EEPROM_STATE_MAGIC;
-    persistedState.lastAcceptedEpoch = static_cast<uint32_t>(acceptedEpoch);
+  // Save the accepted trigger into EEPROM only when the NTP-based clock looks
+  // valid. This updates the current trigger window and clears any previous
+  // suppressed-wake count because that summary is about to be reported.
+  if (acceptedEpoch > MIN_VALID_EPOCH) {
+    persistedState.formatMarker = EEPROM_STATE_MARKER;
+    if (persistedState.windowStartEpoch == 0 ||
+        acceptedEpoch < persistedState.windowStartEpoch ||
+        static_cast<uint32_t>(acceptedEpoch - persistedState.windowStartEpoch) >= (TRIGGER_WINDOW_MS / 1000UL)) {
+      persistedState.windowStartEpoch = static_cast<uint32_t>(acceptedEpoch);
+      persistedState.acceptedCountInWindow = 0;
+    }
+    persistedState.acceptedCountInWindow++;
+    persistedState.cooldownUntilEpoch = 0;
     persistedState.suppressedWakeCount = 0;
     writePersistedThrottleState(persistedState);
   }
@@ -252,6 +374,13 @@ void setup() {
   if (suppressedWakeCount > 0) {
     String suppressedMsg = "Suppressed_wakes:" + String(suppressedWakeCount);
     client.publish(statusTopic.c_str(), suppressedMsg.c_str());
+
+    // The summary has now been reported, so clear the persisted counter.
+    // We save this immediately so the same old count is not announced again
+    // on the next accepted wake.
+    persistedState.suppressedWakeCount = 0;
+    writePersistedThrottleState(persistedState);
+    suppressedWakeCount = 0;
   }
 
   publishStatusStep("Relay duration ms:" + String(RELAY_ON_DURATION_MS));
@@ -264,7 +393,10 @@ void setup() {
   lastRelayOnMs = millis();
   client.publish(statusTopic.c_str(), "Relay ON (local motion trigger)");
 
-  while (millis() - start < AWAKE_WINDOW_MS) {
+  // Stay awake for the configured post-trigger window so the relay can finish
+  // its randomized ON duration before the ESP goes back to sleep.
+  unsigned long awakeLoopStartedAt = millis();
+  while (millis() - awakeLoopStartedAt < AWAKE_WINDOW_MS) {
     client.loop();
 
     // Turn relay OFF when duration elapsed
@@ -277,6 +409,7 @@ void setup() {
     delay(10);
   }
 
+  publishThrottleStateSnapshot();
   goToSleep();
 }
 
