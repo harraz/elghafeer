@@ -185,14 +185,6 @@ void publishFirmwareIdentity() {
   // Print to serial in debug builds so the flashed branch/SHA can be seen
   // even when MQTT is not being watched.
   debugPrint(versionMsg);
-
-  // Always publish the firmware identity when MQTT is connected so the running
-  // branch/commit can be identified later without rebuilding the firmware.
-  if (!client.connected()) {
-    return;
-  }
-
-  client.publish(statusTopic.c_str(), versionMsg.c_str());
 }
 
 // Connect to Wi-Fi, but stop trying once the Wi-Fi timeout expires.
@@ -344,6 +336,8 @@ void setup() {
   doc["ip"] = WiFi.localIP().toString();
   doc["relay_duration_ms"] = currentRelayOnDurationMs;
   doc["awake_window_ms"] = AWAKE_WINDOW_MS;
+  doc["fw_branch"] = FW_GIT_BRANCH;
+  doc["fw_sha"] = FW_GIT_SHA;
 
   // Publish the motion payload for an accepted trigger.
   String payload;
