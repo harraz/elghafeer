@@ -30,7 +30,7 @@ constexpr unsigned long TIME_SYNC_TIMEOUT_MS = 4000;
 // Rate-limiter policy:
 // - count accepted triggers inside this window
 // - once MAX_ACCEPTED_IN_WINDOW is reached, the next trigger starts lockout
-constexpr unsigned long TRIGGER_WINDOW_MS = 30000;
+constexpr unsigned long TRIGGER_WINDOW_MS = 60000;
 constexpr uint32_t MAX_ACCEPTED_IN_WINDOW = 2;
 constexpr unsigned long LOCKOUT_MS = 300000;
 
