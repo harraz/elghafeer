@@ -5,6 +5,12 @@
 #include "handlecmds.h"
 #include <ArduinoJson.h>
 
+// These values are injected by PlatformIO at build time from the current Git
+// branch and commit so the published motion payload can identify the exact
+// firmware build that produced it.
+const char* FW_GIT_BRANCH = BUILD_GIT_BRANCH;
+const char* FW_GIT_SHA = BUILD_GIT_SHA;
+
 String GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 
 const int PIR_PIN    = 4;  // D2
@@ -101,7 +107,9 @@ void handlePIR() {
   String payload = "{\"motion\":true,\"mac\":\"" + mac +
     "\",\"location\":\"" + String(GHAFEER_NAME) +
     "\",\"ip\":\"" + WiFi.localIP().toString() +
-    "\",\"time\":" + String(millis()) + "}";
+    "\",\"time\":" + String(millis()) +
+    ",\"fw_branch\":\"" + String(FW_GIT_BRANCH) +
+    "\",\"fw_sha\":\"" + String(FW_GIT_SHA) + "\"}";
   client.publish(motionTopic.c_str(), payload.c_str());
 }
 
