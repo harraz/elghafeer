@@ -1,10 +1,11 @@
 #include <ESP8266WiFi.h>
 #include "globals.h"
 #include "secrets.h"   // #define WIFI_SSID, WIFI_PASSWORD
+#include "settings.h"  // per-device name, broker, and debug defaults
 #include "handlecmds.h"
 #include <ArduinoJson.h>
 
-String GHAFEER_NAME = "ASHRAF";
+String GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 
 const int PIR_PIN    = 2;  // D4
 const int RELAY_PIN  = 0;  // D3
@@ -14,7 +15,7 @@ unsigned int RELAY_MAX_ON_DURATION = 60000UL; // ms
 unsigned int MAX_PIR_INTERVAL_MS = 30000UL; // ms (maximum interval between PIR detections)
 bool SKIP_LOCAL_RELAY = true; // true to skip local relay activation (MQTT-only control), false to toggle the relay locally
 
-bool DEBUG = false; // Set to true for debug messages, false for normal operation
+bool DEBUG = DEFAULT_DEBUG; // initial debug state comes from the local settings file
 
 unsigned int lastMillis = 0;
 unsigned int relayActivatedMillis = 0;
@@ -137,7 +138,7 @@ void setup() {
   setup_wifi();
   buildTopics();
 
-  client.setServer("192.168.1.246", 1883); // RPi broker IP
+  client.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
   client.setBufferSize(2048); // ensure MQTT can carry HELP payload
   client.setCallback(callback);
 
