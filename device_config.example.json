@@ -1,0 +1,6 @@
+{
+  "device_ghafeer_name": "ASHRAF",
+  "mqtt_broker_host": "192.168.1.246",
+  "mqtt_broker_port": 1883,
+  "default_debug": false
+}

@@ -24,8 +24,14 @@ the next accepted wake as `Suppressed_wakes:N`.
 - [include/config.h](/home/harraz/projects/home_projects/elghaffar-sensor-hub/elghafeer/include/config.h)
   Stable non-secret firmware settings.
 
+- [device_config.example.json](/home/harraz/projects/home_projects/elghaffar-sensor-hub/elghafeer/device_config.example.json)
+  Template for the local JSON file used to generate `include/settings.h` at build time.
+
 - [src/secrets.h](/home/harraz/projects/home_projects/elghaffar-sensor-hub/elghafeer/src/secrets.h)
   Wi-Fi credentials and any other secrets that should not be committed broadly.
+
+- [scripts/generate_settings_header.py](/home/harraz/projects/home_projects/elghaffar-sensor-hub/elghafeer/scripts/generate_settings_header.py)
+  Build step that turns `device_config.json` into `include/settings.h`.
 
 - [platformio.ini](/home/harraz/projects/home_projects/elghaffar-sensor-hub/elghafeer/platformio.ini)
   PlatformIO environment settings plus build-time Git metadata injection.
@@ -42,7 +48,15 @@ firmware as:
 - `FW_GIT_BRANCH`
 - `FW_GIT_SHA`
 
-Those version details are published only when `DEBUG` is enabled.
+Those version details are added to accepted motion payloads so the running
+firmware can be identified later without rebuilding it.
+
+**Build & Flash**
+
+1. Copy `device_config.example.json` to `device_config.json`.
+2. Edit the device name, broker host, broker port, and debug default.
+3. Run `platformio run` or `platformio run -t upload`.
+4. The build generates `include/settings.h` from `device_config.json` automatically.
 
 **Operational MQTT Statuses**
 
