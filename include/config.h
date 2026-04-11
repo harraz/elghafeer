@@ -2,16 +2,17 @@
 
 #include <stdint.h>
 #include <time.h>
+#include "settings.h"
 
 // GPIO used to drive the relay module.
 constexpr int RELAY_PIN = 12;  // D6
 
 // Logical location/name used in MQTT topic paths and payloads.
-constexpr const char* GHAFEER_NAME = "ABBAS";
+constexpr const char* GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 
 // Set to true only while diagnosing the node. Debug mode enables extra serial
 // and MQTT breadcrumb messages that are intentionally hidden in normal use.
-constexpr bool DEBUG = false;
+constexpr bool DEBUG = DEFAULT_DEBUG;
 
 // The relay ON duration is randomized between these bounds for each accepted
 // wake. The chosen per-wake value is stored in currentRelayOnDurationMs at runtime.
@@ -39,8 +40,8 @@ constexpr unsigned long LOCKOUT_MS = 300000;
 constexpr time_t MIN_VALID_EPOCH = 1700000000UL;
 
 // MQTT broker settings for this node.
-constexpr const char* MQTT_SERVER = "192.168.1.246";
-constexpr int MQTT_PORT = 1883;
+constexpr const char* MQTT_SERVER = MQTT_BROKER_HOST;
+constexpr int MQTT_PORT = MQTT_BROKER_PORT;
 
 // EEPROM layout settings for the persisted throttle state.
 constexpr uint32_t EEPROM_STATE_MARKER = 0x47524652;
