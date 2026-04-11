@@ -180,7 +180,7 @@ void publishStatusStep(const String &msg) {
 }
 
 void publishFirmwareIdentity() {
-  String versionMsg = "Firmware:" + String(FW_GIT_BRANCH) + "@" + String(FW_GIT_SHA);
+  String versionMsg = "Firmware build: " + String(FW_GIT_BRANCH) + "@" + String(FW_GIT_SHA);
 
   // Print to serial in debug builds so the flashed branch/SHA can be seen
   // even when MQTT is not being watched.
