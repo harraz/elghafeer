@@ -16,10 +16,12 @@ String GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 const int PIR_PIN    = 2;  // D4
 const int RELAY_PIN  = 0;  // D3
 
-unsigned int PIR_INTERVAL = 30000UL; // ms (default, can change via MQTT)
-unsigned int RELAY_MAX_ON_DURATION = 60000UL; // ms
-unsigned int MAX_PIR_INTERVAL_MS = 30000UL; // ms (maximum interval between PIR detections)
-bool SKIP_LOCAL_RELAY = true; // true to skip local relay activation (MQTT-only control), false to toggle the relay locally
+// These are per-device startup defaults loaded from the generated settings
+// header. MQTT commands may change them later while the device is running.
+unsigned int PIR_INTERVAL = DEFAULT_PIR_INTERVAL_MS;
+unsigned int RELAY_MAX_ON_DURATION = DEFAULT_RELAY_MAX_ON_DURATION_MS;
+unsigned int MAX_PIR_INTERVAL_MS = DEFAULT_MAX_PIR_INTERVAL_MS;
+bool SKIP_LOCAL_RELAY = DEFAULT_SKIP_LOCAL_RELAY;
 
 bool DEBUG = DEFAULT_DEBUG; // initial debug state comes from the local settings file
 
