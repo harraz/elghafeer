@@ -1,8 +1,13 @@
 #include <ESP8266WiFi.h>
 #include <EEPROM.h>
 #include <PubSubClient.h>
+<<<<<<< HEAD
 #include "config.h"
 #include "secrets.h"   // local Wi-Fi credentials from include/secrets.h
+=======
+#include "settings.h"
+#include "secrets.h"   // WIFI_SSID, WIFI_PASSWORD
+>>>>>>> a60f2a3 (`Unify canonical config flow and remove deep-sleep config wrapper`)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +15,27 @@
 #include <ArduinoJson.h>
 
 JsonDocument doc;
+
+const int RELAY_PIN = 12;  // D6
+const char* GHAFEER_NAME = DEVICE_GHAFEER_NAME;
+const bool DEBUG = DEFAULT_DEBUG;
+
+constexpr unsigned int RELAY_ON_MIN_DURATION_MS = DEFAULT_RELAY_ON_MIN_DURATION_MS;
+constexpr unsigned int RELAY_ON_MAX_DURATION_MS = DEFAULT_RELAY_ON_MAX_DURATION_MS;
+constexpr unsigned long AWAKE_WINDOW_MS = DEFAULT_AWAKE_WINDOW_MS;
+constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = DEFAULT_WIFI_CONNECT_TIMEOUT_MS;
+constexpr unsigned long MQTT_CONNECT_TIMEOUT_MS = DEFAULT_MQTT_CONNECT_TIMEOUT_MS;
+constexpr unsigned long TIME_SYNC_TIMEOUT_MS = DEFAULT_TIME_SYNC_TIMEOUT_MS;
+constexpr unsigned long TRIGGER_WINDOW_MS = DEFAULT_TRIGGER_WINDOW_MS;
+constexpr uint32_t MAX_ACCEPTED_IN_WINDOW = DEFAULT_MAX_ACCEPTED_IN_WINDOW;
+constexpr unsigned long LOCKOUT_MS = DEFAULT_LOCKOUT_MS;
+
+constexpr time_t MIN_VALID_EPOCH = 1700000000UL;
+constexpr const char* MQTT_SERVER = MQTT_BROKER_HOST;
+constexpr int MQTT_PORT = MQTT_BROKER_PORT;
+constexpr uint32_t EEPROM_STATE_MARKER = 0x47524652;
+constexpr int EEPROM_SIZE_BYTES = 64;
+constexpr int EEPROM_STATE_ADDR = 0;
 
 // These values are injected by PlatformIO at build time from the current Git
 // branch and commit. They make it possible to identify exactly which firmware
