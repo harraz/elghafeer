@@ -14,26 +14,17 @@ constexpr const char* GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 // and MQTT breadcrumb messages that are intentionally hidden in normal use.
 constexpr bool DEBUG = DEFAULT_DEBUG;
 
-// The relay ON duration is randomized between these bounds for each accepted
-// wake. The chosen per-wake value is stored in currentRelayOnDurationMs at runtime.
-constexpr unsigned int RELAY_ON_MIN_DURATION_MS = 7000;
-constexpr unsigned int RELAY_ON_MAX_DURATION_MS = 10000;
-
-// How long the ESP stays awake after an accepted trigger. This must be long
-// enough for the randomized relay ON duration plus a small safety margin.
-constexpr unsigned long AWAKE_WINDOW_MS = 12000;
-
-// Network timeouts used during the short wake cycle.
-constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 8000;
-constexpr unsigned long MQTT_CONNECT_TIMEOUT_MS = 3000;
-constexpr unsigned long TIME_SYNC_TIMEOUT_MS = 4000;
-
-// Rate-limiter policy:
-// - count accepted triggers inside this window
-// - once MAX_ACCEPTED_IN_WINDOW is reached, the next trigger starts lockout
-constexpr unsigned long TRIGGER_WINDOW_MS = 60000;
-constexpr uint32_t MAX_ACCEPTED_IN_WINDOW = 2;
-constexpr unsigned long LOCKOUT_MS = 300000;
+// The values below are deployment-tuned defaults loaded from device_config.json.
+// That keeps one deep-sleep code branch reusable for multiple physical devices.
+constexpr unsigned int RELAY_ON_MIN_DURATION_MS = DEFAULT_RELAY_ON_MIN_DURATION_MS;
+constexpr unsigned int RELAY_ON_MAX_DURATION_MS = DEFAULT_RELAY_ON_MAX_DURATION_MS;
+constexpr unsigned long AWAKE_WINDOW_MS = DEFAULT_AWAKE_WINDOW_MS;
+constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = DEFAULT_WIFI_CONNECT_TIMEOUT_MS;
+constexpr unsigned long MQTT_CONNECT_TIMEOUT_MS = DEFAULT_MQTT_CONNECT_TIMEOUT_MS;
+constexpr unsigned long TIME_SYNC_TIMEOUT_MS = DEFAULT_TIME_SYNC_TIMEOUT_MS;
+constexpr unsigned long TRIGGER_WINDOW_MS = DEFAULT_TRIGGER_WINDOW_MS;
+constexpr uint32_t MAX_ACCEPTED_IN_WINDOW = DEFAULT_MAX_ACCEPTED_IN_WINDOW;
+constexpr unsigned long LOCKOUT_MS = DEFAULT_LOCKOUT_MS;
 
 // Any epoch larger than this is treated as real NTP time instead of the
 // uninitialized zero-like values seen before time sync completes.

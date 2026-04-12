@@ -13,6 +13,19 @@ REQUIRED_KEYS = {
     "mqtt_broker_host": str,
     "mqtt_broker_port": int,
     "default_debug": bool,
+    "default_pir_interval_ms": int,
+    "default_relay_max_on_duration_ms": int,
+    "default_max_pir_interval_ms": int,
+    "default_skip_local_relay": bool,
+    "relay_on_min_duration_ms": int,
+    "relay_on_max_duration_ms": int,
+    "awake_window_ms": int,
+    "wifi_connect_timeout_ms": int,
+    "mqtt_connect_timeout_ms": int,
+    "time_sync_timeout_ms": int,
+    "trigger_window_ms": int,
+    "max_accepted_in_window": int,
+    "lockout_ms": int,
 }
 
 
@@ -55,6 +68,19 @@ constexpr const char* DEVICE_GHAFEER_NAME = "{escape_cpp_string(config["device_g
 constexpr const char* MQTT_BROKER_HOST = "{escape_cpp_string(config["mqtt_broker_host"])}";
 constexpr int MQTT_BROKER_PORT = {config["mqtt_broker_port"]};
 constexpr bool DEFAULT_DEBUG = {cpp_bool(config["default_debug"])};
+constexpr unsigned int DEFAULT_PIR_INTERVAL_MS = {config["default_pir_interval_ms"]};
+constexpr unsigned int DEFAULT_RELAY_MAX_ON_DURATION_MS = {config["default_relay_max_on_duration_ms"]};
+constexpr unsigned int DEFAULT_MAX_PIR_INTERVAL_MS = {config["default_max_pir_interval_ms"]};
+constexpr bool DEFAULT_SKIP_LOCAL_RELAY = {cpp_bool(config["default_skip_local_relay"])};
+constexpr unsigned int DEFAULT_RELAY_ON_MIN_DURATION_MS = {config["relay_on_min_duration_ms"]};
+constexpr unsigned int DEFAULT_RELAY_ON_MAX_DURATION_MS = {config["relay_on_max_duration_ms"]};
+constexpr unsigned long DEFAULT_AWAKE_WINDOW_MS = {config["awake_window_ms"]}UL;
+constexpr unsigned long DEFAULT_WIFI_CONNECT_TIMEOUT_MS = {config["wifi_connect_timeout_ms"]}UL;
+constexpr unsigned long DEFAULT_MQTT_CONNECT_TIMEOUT_MS = {config["mqtt_connect_timeout_ms"]}UL;
+constexpr unsigned long DEFAULT_TIME_SYNC_TIMEOUT_MS = {config["time_sync_timeout_ms"]}UL;
+constexpr unsigned long DEFAULT_TRIGGER_WINDOW_MS = {config["trigger_window_ms"]}UL;
+constexpr uint32_t DEFAULT_MAX_ACCEPTED_IN_WINDOW = {config["max_accepted_in_window"]};
+constexpr unsigned long DEFAULT_LOCKOUT_MS = {config["lockout_ms"]}UL;
 """
 
     HEADER_PATH.write_text(header_contents, encoding="utf-8")
