@@ -1,18 +1,14 @@
 #include <ESP8266WiFi.h>
 #include <EEPROM.h>
 #include <PubSubClient.h>
-<<<<<<< HEAD
-#include "config.h"
-#include "secrets.h"   // local Wi-Fi credentials from include/secrets.h
-=======
 #include "settings.h"
-#include "secrets.h"   // WIFI_SSID, WIFI_PASSWORD
->>>>>>> a60f2a3 (`Unify canonical config flow and remove deep-sleep config wrapper`)
+#include "secrets.h"   // local Wi-Fi credentials from include/secrets.h
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <ArduinoJson.h>
+
 
 JsonDocument doc;
 
