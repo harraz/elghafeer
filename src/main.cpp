@@ -2,7 +2,7 @@
 #include <EEPROM.h>
 #include <PubSubClient.h>
 #include "config.h"
-#include "secrets.h"   // WIFI_SSID, WIFI_PASSWORD
+#include "secrets.h"   // local Wi-Fi credentials from include/secrets.h
 
 #include <stdio.h>
 #include <stdlib.h>
