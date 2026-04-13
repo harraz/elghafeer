@@ -15,6 +15,8 @@ extern bool SKIP_LOCAL_RELAY;
 extern unsigned int RELAY_MAX_ON_DURATION;
 extern unsigned int MAX_PIR_INTERVAL_MS;
 extern bool DEBUG;
+extern const char* FW_GIT_BRANCH;
+extern const char* FW_GIT_SHA;
 extern String GHAFEER_NAME;
 extern String mac;
 extern String statusTopic;

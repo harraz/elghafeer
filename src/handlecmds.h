@@ -151,7 +151,11 @@ void handleCommand(String cmd) {
     doc["relay"] = digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF";
     doc["skip_local_relay"] = SKIP_LOCAL_RELAY;
     doc["pir_interval"] = PIR_INTERVAL;
+    doc["max_pir_interval_ms"] = MAX_PIR_INTERVAL_MS;
+    doc["relay_max_on_duration"] = RELAY_MAX_ON_DURATION;
     doc["debug"] = DEBUG;
+    doc["fw_branch"] = FW_GIT_BRANCH;
+    doc["fw_sha"] = FW_GIT_SHA;
   }
   else if (cmd == "HELP") {
     // Build help array explicitly to avoid null root quirks
