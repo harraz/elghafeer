@@ -15,5 +15,7 @@
   "time_sync_timeout_ms": 4000,
   "trigger_window_ms": 60000,
   "max_accepted_in_window": 2,
-  "lockout_ms": 300000
+  "lockout_ms": 300000,
+  "relay_gpio_pin": 10,
+  "wake_gpio_pin": 3
 }

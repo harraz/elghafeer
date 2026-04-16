@@ -1,5 +1,7 @@
-#include <ESP8266WiFi.h>
-#include <EEPROM.h>
+#include <WiFi.h>
+#include <Preferences.h>
+#include <esp_sleep.h>
+
 #include <PubSubClient.h>
 #include "settings.h"
 #include "secrets.h"   // local Wi-Fi credentials from include/secrets.h
@@ -12,7 +14,8 @@
 
 JsonDocument doc;
 
-const int RELAY_PIN = 12;  // D6
+const int RELAY_PIN = DEFAULT_RELAY_GPIO_PIN;
+const int WAKE_PIN = DEFAULT_WAKE_GPIO_PIN;
 const char* GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 const bool DEBUG = DEFAULT_DEBUG;
 
@@ -29,9 +32,9 @@ constexpr unsigned long LOCKOUT_MS = DEFAULT_LOCKOUT_MS;
 constexpr time_t MIN_VALID_EPOCH = 1700000000UL;
 constexpr const char* MQTT_SERVER = MQTT_BROKER_HOST;
 constexpr int MQTT_PORT = MQTT_BROKER_PORT;
-constexpr uint32_t EEPROM_STATE_MARKER = 0x47524652;
-constexpr int EEPROM_SIZE_BYTES = 64;
-constexpr int EEPROM_STATE_ADDR = 0;
+constexpr uint32_t PERSISTED_STATE_MARKER = 0x47524652;
+constexpr const char* PERSISTENCE_NAMESPACE = "throttle";
+constexpr const char* PERSISTENCE_KEY = "state";
 
 // These values are injected by PlatformIO at build time from the current Git
 // branch and commit. They make it possible to identify exactly which firmware
@@ -47,15 +50,16 @@ unsigned int currentRelayOnDurationMs = RELAY_ON_MAX_DURATION_MS;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+Preferences preferences;
 
 String mac;
 String statusTopic;
 String motionTopic;
 
-// This struct is the small block of data we store in EEPROM.
-// EEPROM is used here so the saved values survive resets and full power loss.
+// This struct is the small block of data we store in NVS-backed Preferences
+// so the saved values survive resets and full power loss.
 struct PersistedThrottleState {
-  // A fixed marker that lets us tell whether EEPROM contains our data format.
+  // A fixed marker that lets us tell whether Preferences contains our data format.
   uint32_t formatMarker;
   // A quick integrity check so broken or random EEPROM contents are ignored.
   uint32_t checksum;
@@ -71,14 +75,14 @@ struct PersistedThrottleState {
 
 uint32_t calculateChecksum(const PersistedThrottleState &state) {
   // Build one number from the important fields so we can later detect whether
-  // the EEPROM contents were corrupted or do not match what we previously wrote.
+  // the stored contents were corrupted or do not match what we previously wrote.
   //
   // XOR (`^`) compares numbers bit-by-bit and mixes them together into a new
   // value. We use it here because it is cheap on a microcontroller and good
   // enough for a simple "does this still look like my saved data?" check.
   //
   // This is not encryption and it is not meant to stop tampering. It is only
-  // meant to catch obviously invalid or random EEPROM contents.
+  // meant to catch obviously invalid or random stored contents.
   uint32_t checksum = state.formatMarker;
   checksum ^= state.windowStartEpoch;
   checksum ^= state.acceptedCountInWindow;
@@ -89,13 +93,13 @@ uint32_t calculateChecksum(const PersistedThrottleState &state) {
 }
 
 bool readPersistedThrottleState(PersistedThrottleState &state) {
-  // Copy the raw bytes from EEPROM into the struct in RAM.
-  EEPROM.get(EEPROM_STATE_ADDR, state);
-  // If the marker does not match, EEPROM does not contain our saved state yet.
-  if (state.formatMarker != EEPROM_STATE_MARKER) {
+  size_t bytesRead = preferences.getBytes(PERSISTENCE_KEY, &state, sizeof(state));
+  if (bytesRead != sizeof(state)) {
     return false;
   }
-  // Only accept the stored state if the checksum still matches.
+  if (state.formatMarker != PERSISTED_STATE_MARKER) {
+    return false;
+  }
   return state.checksum == calculateChecksum(state);
 }
 
@@ -104,10 +108,15 @@ void writePersistedThrottleState(const PersistedThrottleState &sourceState) {
   PersistedThrottleState state = sourceState;
   // Fill in the checksum field from the other values.
   state.checksum = calculateChecksum(state);
-  // Write the struct into EEPROM.
-  EEPROM.put(EEPROM_STATE_ADDR, state);
-  // Flush the write so it is actually committed to flash-backed EEPROM storage.
-  EEPROM.commit();
+  preferences.putBytes(PERSISTENCE_KEY, &state, sizeof(state));
+}
+
+void initializePersistentStorage() {
+  preferences.begin(PERSISTENCE_NAMESPACE, false);
+}
+
+void prepareWakeSource() {
+  pinMode(WAKE_PIN, INPUT_PULLUP);
 }
 
 // Ask NTP servers for the current wall-clock time.
@@ -137,7 +146,7 @@ bool syncTime() {
 void recordSuppressedWake() {
   PersistedThrottleState state;
   if (!readPersistedThrottleState(state)) {
-    state = {EEPROM_STATE_MARKER, 0, 0, 0, 0, 0};
+    state = {PERSISTED_STATE_MARKER, 0, 0, 0, 0, 0};
   }
   state.suppressedWakeCount++;
   writePersistedThrottleState(state);
@@ -152,10 +161,10 @@ enum TriggerDecision {
 // Decide whether this wake should be accepted, blocked because the device is
 // already in lockout, or blocked because it just exceeded the rate limit.
 TriggerDecision evaluateTrigger(time_t nowEpoch, PersistedThrottleState &state) {
-  // Load the last saved limiter state from EEPROM.
+  // Load the last saved limiter state from Preferences.
   // If nothing valid was saved yet, start from an empty state.
   if (!readPersistedThrottleState(state)) {
-    state = {EEPROM_STATE_MARKER, 0, 0, 0, 0, 0};
+    state = {PERSISTED_STATE_MARKER, 0, 0, 0, 0, 0};
   }
 
   // If the device is still inside a previously started lockout period,
@@ -211,6 +220,7 @@ void publishFirmwareIdentity() {
 
 // Connect to Wi-Fi, but stop trying once the Wi-Fi timeout expires.
 bool setup_wifi() {
+  WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   unsigned long wifiStartedAt = millis();
   while (WiFi.status() != WL_CONNECTED &&
@@ -243,11 +253,12 @@ void goToSleep(bool publishStatus = true) {
   }
   // Turn Wi-Fi off before sleeping to reduce power usage and clean up state.
   if (WiFi.isConnected()) {
-    WiFi.disconnect(true);
+    WiFi.disconnect(true, true);
   }
   debugPrint("Sleeping...");
   delay(1500);  // wait briefly to let the PIR/reset path settle before sleeping
-  ESP.deepSleep(0);   // forever, until RST triggered (PIR)
+  esp_deep_sleep_enable_gpio_wakeup(1ULL << WAKE_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
+  esp_deep_sleep_start();
 }
 
 void publishThrottleStateSnapshot() {
@@ -275,8 +286,9 @@ void setup() {
   digitalWrite(RELAY_PIN, LOW);  // preset output level before enabling pin to avoid boot pulse
   pinMode(RELAY_PIN, OUTPUT);
   Serial.begin(115200);
-  // Prepare EEPROM access before reading or writing saved throttle state.
-  EEPROM.begin(EEPROM_SIZE_BYTES);
+  // Prepare persistent storage before reading or writing saved throttle state.
+  initializePersistentStorage();
+  prepareWakeSource();
   debugPrint("Booting after motion...");
 
   if (!setup_wifi()) {
@@ -306,7 +318,7 @@ void setup() {
     suppressedWakeCount = persistedState.suppressedWakeCount;
     publishStatusStep("Persisted state loaded");
   } else {
-    persistedState = {EEPROM_STATE_MARKER, 0, 0, 0, 0, 0};
+    persistedState = {PERSISTED_STATE_MARKER, 0, 0, 0, 0, 0};
     publishStatusStep("Persisted state missing; starting fresh");
   }
 
@@ -349,8 +361,7 @@ void setup() {
     }
   }
   // Pick a random relay ON duration inside the allowed range for this wake.
-  uint32_t randomRange = RELAY_ON_MAX_DURATION_MS - RELAY_ON_MIN_DURATION_MS + 1;
-  currentRelayOnDurationMs = RELAY_ON_MIN_DURATION_MS + (ESP.random() % randomRange);
+  currentRelayOnDurationMs = random(RELAY_ON_MIN_DURATION_MS, RELAY_ON_MAX_DURATION_MS + 1);
 
   doc["motion"] = true;
   doc["mac"] = mac;
@@ -366,11 +377,11 @@ void setup() {
   serializeJson(doc, payload);
 
   time_t acceptedEpoch = time(nullptr);
-  // Save the accepted trigger into EEPROM only when the NTP-based clock looks
+  // Save the accepted trigger into Preferences only when the NTP-based clock looks
   // valid. This updates the current trigger window and clears any previous
   // suppressed-wake count because that summary is about to be reported.
   if (acceptedEpoch > MIN_VALID_EPOCH) {
-    persistedState.formatMarker = EEPROM_STATE_MARKER;
+    persistedState.formatMarker = PERSISTED_STATE_MARKER;
     if (persistedState.windowStartEpoch == 0 ||
         acceptedEpoch < persistedState.windowStartEpoch ||
         static_cast<uint32_t>(acceptedEpoch - persistedState.windowStartEpoch) >= (TRIGGER_WINDOW_MS / 1000UL)) {

@@ -1,23 +1,23 @@
 **Overview**
 
-This firmware runs an ESP8266 PIR-triggered relay node that sleeps until a PIR
-event pulls `RST` low. After waking, the node connects to Wi-Fi and MQTT,
-optionally evaluates a persisted trigger limiter using NTP time, publishes a
-motion event for accepted wakes, turns the relay on for a randomized duration,
-and then returns to deep sleep.
+This firmware runs a Seeed XIAO ESP32-C3 PIR-triggered relay node that sleeps
+until a PIR event drives the configured wake GPIO active. After waking, the
+node connects to Wi-Fi and MQTT, optionally evaluates a persisted trigger
+limiter using NTP time, publishes a motion event for accepted wakes, turns the
+relay on for a randomized duration, and then returns to deep sleep.
 
 **Current Behavior**
 
-- Wake source: `PIR -> transistor -> RST`
+- Wake source: `PIR -> wake GPIO` using ESP32-C3 deep-sleep GPIO wake
 - Relay ON duration: randomized between `7000` and `10000` ms
 - Awake window after an accepted trigger: `12000` ms
 - Trigger window: `30000` ms
 - Accepted triggers allowed in one window: `2`
 - Lockout after the limit is exceeded: `300000` ms
 
-The limiter state is stored in EEPROM so it survives resets and power loss.
-The firmware also keeps a suppressed-wake count and publishes that summary on
-the next accepted wake as `Suppressed_wakes:N`.
+The limiter state is stored in Preferences/NVS so it survives resets and power
+loss. The firmware also keeps a suppressed-wake count and publishes that
+summary on the next accepted wake as `Suppressed_wakes:N`.
 
 **Configuration Layout**
 
@@ -55,8 +55,13 @@ firmware can be identified later without rebuilding it.
 
 1. Copy `device_config.example.json` to `device_config.json`.
 2. Edit the device name, broker host, broker port, and debug default.
-3. Run `platformio run` or `platformio run -t upload`.
-4. The build generates `include/settings.h` from `device_config.json` automatically.
+3. Set `relay_gpio_pin` and `wake_gpio_pin` in `device_config.json` for the XIAO ESP32-C3 wiring.
+4. Run `platformio run -e seeed_xiao_esp32c3` or `platformio run -e seeed_xiao_esp32c3 -t upload`.
+5. The build generates `include/settings.h` from `device_config.json` automatically.
+
+The generated settings also accept optional `relay_gpio_pin` and
+`wake_gpio_pin` values. Wire the PIR to the chosen ESP32-C3 wake pin and
+update `device_config.json` to match.
 
 **Operational MQTT Statuses**
 
@@ -73,9 +78,8 @@ More detailed breadcrumbs are emitted only when `DEBUG` is enabled.
 
 **Limits Of The Current Design**
 
-Because the PIR wakes the node by driving `RST`, the ESP8266 cannot ignore a
-hardware reset while it is already awake. Firmware can suppress behavior after
-the reboot, but it cannot prevent the reset itself without hardware changes.
-
-That means the limiter works across wake cycles, but it cannot fully stop a
-new reset from interrupting a currently running awake cycle.
+This branch assumes the PIR can be conditioned into a clean ESP32-C3 wake
+signal. If the PIR output chatters or remains asserted, the board can wake
+again immediately after re-entering deep sleep. The limiter still handles
+suppression in firmware, but stable wake wiring matters for predictable sleep
+cycles.

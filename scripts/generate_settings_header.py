@@ -28,6 +28,11 @@ REQUIRED_KEYS = {
     "lockout_ms": int,
 }
 
+OPTIONAL_KEYS = {
+    "relay_gpio_pin": int,
+    "wake_gpio_pin": int,
+}
+
 
 def load_config():
     if not CONFIG_PATH.exists():
@@ -43,6 +48,12 @@ def load_config():
         if key not in config:
             raise RuntimeError(f"device_config.json is missing required key: {key}")
         if not isinstance(config[key], expected_type):
+            raise RuntimeError(
+                f"device_config.json key {key} must be a {expected_type.__name__}"
+            )
+
+    for key, expected_type in OPTIONAL_KEYS.items():
+        if key in config and not isinstance(config[key], expected_type):
             raise RuntimeError(
                 f"device_config.json key {key} must be a {expected_type.__name__}"
             )
@@ -81,6 +92,8 @@ constexpr unsigned long DEFAULT_TIME_SYNC_TIMEOUT_MS = {config["time_sync_timeou
 constexpr unsigned long DEFAULT_TRIGGER_WINDOW_MS = {config["trigger_window_ms"]}UL;
 constexpr uint32_t DEFAULT_MAX_ACCEPTED_IN_WINDOW = {config["max_accepted_in_window"]};
 constexpr unsigned long DEFAULT_LOCKOUT_MS = {config["lockout_ms"]}UL;
+constexpr int DEFAULT_RELAY_GPIO_PIN = {config.get("relay_gpio_pin", 12)};
+constexpr int DEFAULT_WAKE_GPIO_PIN = {config.get("wake_gpio_pin", 2)};
 """
 
     HEADER_PATH.write_text(header_contents, encoding="utf-8")
