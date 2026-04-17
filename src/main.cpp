@@ -257,7 +257,7 @@ void goToSleep(bool publishStatus = true) {
   }
   debugPrint("Sleeping...");
   delay(1500);  // wait briefly to let the PIR/reset path settle before sleeping
-  esp_deep_sleep_enable_gpio_wakeup(1ULL << WAKE_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
+  esp_deep_sleep_enable_gpio_wakeup(BIT(WAKE_PIN), ESP_GPIO_WAKEUP_GPIO_LOW);
   esp_deep_sleep_start();
 }
 
