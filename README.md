@@ -21,22 +21,22 @@ summary on the next accepted wake as `Suppressed_wakes:N`.
 
 **Configuration Layout**
 
-- [include/config.h](/home/harraz/projects/home_projects/elghaffar-sensor-hub/elghafeer/include/config.h)
-  Stable non-secret firmware settings.
-
-- [device_config.example.json](/home/harraz/projects/home_projects/elghaffar-sensor-hub/elghafeer/device_config.example.json)
+- [device_config.example.json](/home/harraz/projects/home_projects_new/elghafeer/device_config.example.json)
   Template for the local JSON file used to generate `include/settings.h` at build time.
 
-- [src/secrets.h](/home/harraz/projects/home_projects/elghaffar-sensor-hub/elghafeer/src/secrets.h)
+- [include/settings.h](/home/harraz/projects/home_projects_new/elghafeer/include/settings.h)
+  Build-generated constants from `device_config.json`.
+
+- [include/secrets.h](/home/harraz/projects/home_projects_new/elghafeer/include/secrets.h)
   Wi-Fi credentials and any other secrets that should not be committed broadly.
 
-- [scripts/generate_settings_header.py](/home/harraz/projects/home_projects/elghaffar-sensor-hub/elghafeer/scripts/generate_settings_header.py)
+- [scripts/generate_settings_header.py](/home/harraz/projects/home_projects_new/elghafeer/scripts/generate_settings_header.py)
   Build step that turns `device_config.json` into `include/settings.h`.
 
-- [platformio.ini](/home/harraz/projects/home_projects/elghaffar-sensor-hub/elghafeer/platformio.ini)
+- [platformio.ini](/home/harraz/projects/home_projects_new/elghafeer/platformio.ini)
   PlatformIO environment settings plus build-time Git metadata injection.
 
-- [docs/firmware-flow.puml](/home/harraz/projects/home_projects/elghaffar-sensor-hub/elghafeer/docs/firmware-flow.puml)
+- [docs/firmware-flow.puml](/home/harraz/projects/home_projects_new/elghafeer/docs/firmware-flow.puml)
   PlantUML sequence diagram for the current wake / throttle / relay flow.
 
 **Build Metadata**
@@ -51,17 +51,45 @@ firmware as:
 Those version details are added to accepted motion payloads so the running
 firmware can be identified later without rebuilding it.
 
+**PlatformIO Envs**
+
+- `seeed_xiao_esp32c3`
+  Full production firmware with Wi-Fi, MQTT, relay control, throttling, and deep sleep.
+
+- `seeed_xiao_esp32c3_sleep_test`
+  Minimal deep-sleep validation firmware. It only configures `D1 / GPIO3` as a wake-low source and immediately enters deep sleep.
+
+- `seeed_xiao_esp32c3_mqtt_smoke_test`
+  Minimal network baseline firmware. It connects to Wi-Fi, publishes one MQTT status message, and returns to deep sleep.
+
 **Build & Flash**
 
 1. Copy `device_config.example.json` to `device_config.json`.
 2. Edit the device name, broker host, broker port, and debug default.
 3. Set `relay_gpio_pin` and `wake_gpio_pin` in `device_config.json` for the XIAO ESP32-C3 wiring.
-4. Run `platformio run -e seeed_xiao_esp32c3` or `platformio run -e seeed_xiao_esp32c3 -t upload`.
+4. Build or flash the environment you want.
 5. The build generates `include/settings.h` from `device_config.json` automatically.
 
 The generated settings also accept optional `relay_gpio_pin` and
 `wake_gpio_pin` values. Wire the PIR to the chosen ESP32-C3 wake pin and
 update `device_config.json` to match.
+
+Common commands:
+
+```bash
+/home/harraz/.platformio/penv/bin/pio run -e seeed_xiao_esp32c3
+/home/harraz/.platformio/penv/bin/pio run -e seeed_xiao_esp32c3 -t upload --upload-port /dev/ttyACM0
+
+/home/harraz/.platformio/penv/bin/pio run -e seeed_xiao_esp32c3_sleep_test
+/home/harraz/.platformio/penv/bin/pio run -e seeed_xiao_esp32c3_sleep_test -t upload --upload-port /dev/ttyACM0
+
+/home/harraz/.platformio/penv/bin/pio run -e seeed_xiao_esp32c3_mqtt_smoke_test
+/home/harraz/.platformio/penv/bin/pio run -e seeed_xiao_esp32c3_mqtt_smoke_test -t upload --upload-port /dev/ttyACM0
+```
+
+If the board does not auto-enter bootloader mode on your Linux USB setup,
+start the upload first and then manually hold `BOOT`, tap `RESET`, and release
+`BOOT` after the uploader connects.
 
 **Operational MQTT Statuses**
 

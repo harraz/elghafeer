@@ -201,6 +201,10 @@ void debugPrint(const String &msg) {
   if (DEBUG) Serial.println(msg);
 }
 
+void tracePrint(const String &msg) {
+  Serial.println(msg);
+}
+
 // Publish debug-only breadcrumbs to the MQTT status topic.
 // These messages are useful during development but are intentionally hidden in
 // normal operation so the status topic only shows operational events.
@@ -220,6 +224,7 @@ void publishFirmwareIdentity() {
 
 // Connect to Wi-Fi, but stop trying once the Wi-Fi timeout expires.
 bool setup_wifi() {
+  tracePrint("TRACE: wifi_connect_start");
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   unsigned long wifiStartedAt = millis();
@@ -230,9 +235,11 @@ bool setup_wifi() {
   }
   if (WiFi.status() != WL_CONNECTED) {
     debugPrint("Wi-Fi connect timeout");
+    tracePrint("TRACE: wifi_connect_timeout");
     return false;
   }
   debugPrint("Wi-Fi connected: " + WiFi.localIP().toString());
+  tracePrint("TRACE: wifi_connected ip=" + WiFi.localIP().toString());
   return true;
 }
 
@@ -245,6 +252,8 @@ void buildTopics() {
 }
 
 void goToSleep(bool publishStatus = true) {
+  tracePrint("TRACE: entering_deep_sleep");
+  Serial.flush();
   // If MQTT is connected, send one last status message before sleeping.
   if (publishStatus && client.connected()) {
     client.publish(statusTopic.c_str(), "Going to deep sleep...");
@@ -286,10 +295,12 @@ void setup() {
   digitalWrite(RELAY_PIN, LOW);  // preset output level before enabling pin to avoid boot pulse
   pinMode(RELAY_PIN, OUTPUT);
   Serial.begin(115200);
+  delay(200);
   // Prepare persistent storage before reading or writing saved throttle state.
   initializePersistentStorage();
   prepareWakeSource();
   debugPrint("Booting after motion...");
+  tracePrint("TRACE: boot");
 
   if (!setup_wifi()) {
     goToSleep(false);
@@ -306,8 +317,10 @@ void setup() {
   }
   if (!client.connected()) {
     debugPrint("MQTT connect timeout, sleeping");
+    tracePrint("TRACE: mqtt_connect_timeout");
     goToSleep(false);
   }
+  tracePrint("TRACE: mqtt_connected");
 
   publishFirmwareIdentity();
   publishStatusStep("Boot complete: WiFi and MQTT connected");
@@ -324,9 +337,11 @@ void setup() {
 
   if (!syncTime()) {
     publishStatusStep("Time sync failed; skipping throttle");
+    tracePrint("TRACE: time_sync_failed");
   } else {
     time_t nowEpoch = time(nullptr);
     publishStatusStep("Time sync OK; epoch:" + String(static_cast<unsigned long>(nowEpoch)));
+    tracePrint("TRACE: time_sync_ok");
 
     TriggerDecision decision = evaluateTrigger(nowEpoch, persistedState);
 
@@ -339,6 +354,7 @@ void setup() {
       }
       String statusMsg = "Wake suppressed: lockout active, count:" + String(suppressedCount);
       client.publish(statusTopic.c_str(), statusMsg.c_str());
+      tracePrint("TRACE: wake_suppressed_lockout");
       goToSleep(false);
     }
 
@@ -351,6 +367,7 @@ void setup() {
       }
       String statusMsg = "Wake suppressed: rate limit exceeded, count:" + String(suppressedCount);
       client.publish(statusTopic.c_str(), statusMsg.c_str());
+      tracePrint("TRACE: wake_suppressed_rate_limit");
       goToSleep(false);
     }
 
@@ -409,6 +426,7 @@ void setup() {
   publishStatusStep("Relay duration ms:" + String(currentRelayOnDurationMs));
   client.publish(motionTopic.c_str(), payload.c_str());
   publishStatusStep("Motion event published");
+  tracePrint("TRACE: motion_published");
 
   // Relay ON from local motion trigger
   digitalWrite(RELAY_PIN, HIGH);
@@ -428,6 +446,7 @@ void setup() {
       relayOn = false;
       client.publish(statusTopic.c_str(), "Relay OFF (timer expired)");
       publishStatusStep("Relay timer expired");
+      tracePrint("TRACE: relay_off");
     }
     delay(10);
   }
