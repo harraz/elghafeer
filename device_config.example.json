@@ -6,7 +6,7 @@
   "default_pir_interval_ms": 30000,
   "default_relay_max_on_duration_ms": 60000,
   "default_max_pir_interval_ms": 30000,
-  "default_skip_local_relay": true,
+  "default_skip_local_relay": false,
   "relay_on_min_duration_ms": 7000,
   "relay_on_max_duration_ms": 10000,
   "awake_window_ms": 12000,

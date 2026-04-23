@@ -18,6 +18,7 @@ const int RELAY_PIN = DEFAULT_RELAY_GPIO_PIN;
 const int WAKE_PIN = DEFAULT_WAKE_GPIO_PIN;
 const char* GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 const bool DEBUG = DEFAULT_DEBUG;
+const bool SKIP_LOCAL_RELAY = DEFAULT_SKIP_LOCAL_RELAY;
 
 constexpr unsigned int RELAY_ON_MIN_DURATION_MS = DEFAULT_RELAY_ON_MIN_DURATION_MS;
 constexpr unsigned int RELAY_ON_MAX_DURATION_MS = DEFAULT_RELAY_ON_MAX_DURATION_MS;
@@ -336,6 +337,7 @@ void setup() {
   }
 
   if (!syncTime()) {
+    client.publish(statusTopic.c_str(), "Time sync failed; skipping throttle");
     publishStatusStep("Time sync failed; skipping throttle");
     tracePrint("TRACE: time_sync_failed");
   } else {
@@ -428,11 +430,16 @@ void setup() {
   publishStatusStep("Motion event published");
   tracePrint("TRACE: motion_published");
 
-  // Relay ON from local motion trigger
-  digitalWrite(RELAY_PIN, HIGH);
-  relayOn = true;
-  lastRelayOnMs = millis();
-  client.publish(statusTopic.c_str(), "Relay ON (local motion trigger)");
+  // Relay ON from local motion trigger unless the device config disables
+  // local relay actuation for this board.
+  if (!SKIP_LOCAL_RELAY) {
+    digitalWrite(RELAY_PIN, HIGH);
+    relayOn = true;
+    lastRelayOnMs = millis();
+    client.publish(statusTopic.c_str(), "Relay ON (local motion trigger)");
+  } else {
+    publishStatusStep("Local relay skipped by config");
+  }
 
   // Stay awake for the configured post-trigger window so the relay can finish
   // its randomized ON duration before the ESP goes back to sleep.
