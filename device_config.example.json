@@ -12,7 +12,7 @@
   "awake_window_ms": 12000,
   "wifi_connect_timeout_ms": 8000,
   "mqtt_connect_timeout_ms": 3000,
-  "time_sync_timeout_ms": 4000,
+  "time_sync_timeout_ms": 8000,
   "trigger_window_ms": 60000,
   "max_accepted_in_window": 2,
   "lockout_ms": 300000,
