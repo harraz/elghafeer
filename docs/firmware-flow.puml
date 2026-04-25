@@ -18,23 +18,19 @@ ESP -> EEPROM : Begin EEPROM access
 ESP -> WIFI : Connect
 alt Wi-Fi timeout
   ESP -> ESP : Deep sleep
-  deactivate ESP
-else Wi-Fi connected
-  ESP -> MQTT : Connect
-  alt MQTT timeout
-    ESP -> ESP : Deep sleep
     deactivate ESP
-  else MQTT connected
-    ESP -> MQTT : Publish firmware identity
+  else Wi-Fi connected
+    ESP -> MQTT : Connect
+    alt MQTT timeout
+      ESP -> ESP : Deep sleep
+      deactivate ESP
+    else MQTT connected
+      ESP -> ESP : Publish firmware identity to serial when DEBUG is enabled
 
-    opt DEBUG enabled
-      ESP -> MQTT : Publish debug breadcrumbs
-    end
+      ESP -> EEPROM : Read saved limiter state
+      ESP -> NTP : Sync wall-clock time
 
-    ESP -> EEPROM : Read saved limiter state
-    ESP -> NTP : Sync wall-clock time
-
-    alt NTP success
+      alt NTP success
       ESP -> EEPROM : Evaluate trigger window and lockout
 
       alt Lockout active
@@ -54,6 +50,9 @@ else Wi-Fi connected
         ESP -> EEPROM : Clear suppressedWakeCount
       end
     else NTP failed
+      opt DEBUG enabled
+        ESP -> MQTT : Publish "Time sync failed; skipping throttle"
+      end
       ESP -> ESP : Continue without throttle decision
     end
 
@@ -64,10 +63,14 @@ else Wi-Fi connected
 
     ESP -> ESP : Randomize currentRelayOnDurationMs
     ESP -> MQTT : Publish motion payload
-    ESP -> RELAY : ON
-    ESP -> MQTT : Publish "Relay ON (local motion trigger)"
+    alt Local relay enabled
+      ESP -> RELAY : ON
+      ESP -> MQTT : Publish "Relay ON (local motion trigger)"
+    else Local relay skipped by config
+      ESP -> MQTT : Publish "Local relay skipped by config"
+    end
 
-    loop For awake window
+    loop For post-trigger awake window
       alt Relay duration elapsed
         ESP -> RELAY : OFF
         ESP -> MQTT : Publish "Relay OFF (timer expired)"
