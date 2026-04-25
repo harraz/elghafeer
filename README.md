@@ -4,14 +4,15 @@ This firmware runs a Seeed XIAO ESP32-C3 PIR-triggered relay node that sleeps
 until a PIR event drives the configured wake GPIO active. After waking, the
 node connects to Wi-Fi and MQTT, optionally evaluates a persisted trigger
 limiter using NTP time, publishes a motion event for accepted wakes, turns the
-relay on for a randomized duration, and then returns to deep sleep.
+relay on for a randomized duration or skips local actuation when configured to
+publish-only, and then returns to deep sleep.
 
 **Current Behavior**
 
 - Wake source: `PIR -> wake GPIO` using ESP32-C3 deep-sleep GPIO wake
 - Relay ON duration: randomized between `7000` and `10000` ms
-- Awake window after an accepted trigger: `12000` ms
-- Trigger window: `30000` ms
+- Post-trigger awake window after an accepted trigger: `12000` ms
+- Trigger window: `60000` ms
 - Accepted triggers allowed in one window: `2`
 - Lockout after the limit is exceeded: `300000` ms
 
@@ -23,6 +24,9 @@ summary on the next accepted wake as `Suppressed_wakes:N`.
 
 - [device_config.example.json](/home/harraz/projects/home_projects_new/elghafeer/device_config.example.json)
   Template for the local JSON file used to generate `include/settings.h` at build time.
+
+- [device_config.json](/home/harraz/projects/home_projects_new/elghafeer/device_config.json)
+  Local per-device deployment settings. This file is intentionally not tracked.
 
 - [include/settings.h](/home/harraz/projects/home_projects_new/elghafeer/include/settings.h)
   Build-generated constants from `device_config.json`.
@@ -65,7 +69,7 @@ firmware can be identified later without rebuilding it.
 **Build & Flash**
 
 1. Copy `device_config.example.json` to `device_config.json`.
-2. Edit the device name, broker host, broker port, and debug default.
+2. Edit the device name, broker host, timing values, and relay behavior.
 3. Set `relay_gpio_pin` and `wake_gpio_pin` in `device_config.json` for the XIAO ESP32-C3 wiring.
 4. Build or flash the environment you want.
 5. The build generates `include/settings.h` from `device_config.json` automatically.
@@ -73,6 +77,23 @@ firmware can be identified later without rebuilding it.
 The generated settings also accept optional `relay_gpio_pin` and
 `wake_gpio_pin` values. Wire the PIR to the chosen ESP32-C3 wake pin and
 update `device_config.json` to match.
+
+**Active Config Keys**
+
+- `default_skip_local_relay`
+  When `true`, the node still publishes motion/status MQTT messages but does not drive the local relay.
+
+- `relay_on_min_duration_ms` / `relay_on_max_duration_ms`
+  Bounds for the randomized local relay ON duration on accepted wakes.
+
+- `post_trigger_awake_window_ms`
+  How long the node stays awake after an accepted trigger so the relay timer and MQTT loop can complete.
+
+- `trigger_window_ms`, `max_accepted_in_window`, `lockout_ms`
+  The persisted limiter window and lockout policy.
+
+- `wifi_connect_timeout_ms`, `mqtt_connect_timeout_ms`, `time_sync_timeout_ms`
+  Upper bounds for Wi-Fi, MQTT, and NTP setup work on each wake.
 
 Common commands:
 
@@ -97,7 +118,9 @@ Normal operation keeps the status topic focused on important events:
 
 - `Relay ON (local motion trigger)`
 - `Relay OFF (timer expired)`
+- `Local relay skipped by config`
 - `Going to deep sleep...`
+- `Time sync failed; skipping throttle`
 - `Wake suppressed: rate limit exceeded, count:N`
 - `Wake suppressed: lockout active, count:N`
 - `Suppressed_wakes:N`

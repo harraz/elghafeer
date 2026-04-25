@@ -1,19 +1,20 @@
 @startuml
-title ESP8266 PIR Reset Wake With EEPROM/NTP Throttle
+title ESP32-C3 GPIO Wake With Preferences/NTP Throttle
 
 actor PIR
-participant "ESP8266" as ESP
+participant "ESP32-C3" as ESP
 participant "WiFi" as WIFI
 participant "MQTT" as MQTT
 participant "NTP" as NTP
-database "EEPROM" as EEPROM
+database "Preferences/NVS" as NVS
 participant "Relay" as RELAY
 
-PIR -> ESP : Pull RST low
+PIR -> ESP : Drive wake GPIO low
 activate ESP
 
 ESP -> ESP : Boot and init relay output LOW
-ESP -> EEPROM : Begin EEPROM access
+ESP -> ESP : Configure wake GPIO with pull-up
+ESP -> NVS : Begin Preferences access
 
 ESP -> WIFI : Connect
 alt Wi-Fi timeout
@@ -25,49 +26,50 @@ else Wi-Fi connected
     ESP -> ESP : Deep sleep
     deactivate ESP
   else MQTT connected
-    ESP -> MQTT : Publish firmware identity
+    ESP -> ESP : Publish firmware identity to serial when DEBUG is enabled
 
-    opt DEBUG enabled
-      ESP -> MQTT : Publish debug breadcrumbs
-    end
-
-    ESP -> EEPROM : Read saved limiter state
+    ESP -> NVS : Read saved limiter state
     ESP -> NTP : Sync wall-clock time
 
     alt NTP success
-      ESP -> EEPROM : Evaluate trigger window and lockout
+      ESP -> NVS : Evaluate trigger window and lockout
 
       alt Lockout active
-        ESP -> EEPROM : Increment suppressedWakeCount
+        ESP -> NVS : Increment suppressedWakeCount
         ESP -> MQTT : Publish "Wake suppressed: lockout active, count:N"
         ESP -> ESP : Deep sleep
         deactivate ESP
       else Rate limit exceeded
-        ESP -> EEPROM : Increment suppressedWakeCount
+        ESP -> NVS : Increment suppressedWakeCount
         ESP -> MQTT : Publish "Wake suppressed: rate limit exceeded, count:N"
         ESP -> ESP : Deep sleep
         deactivate ESP
       else Accepted
-        ESP -> EEPROM : Update windowStartEpoch
-        ESP -> EEPROM : Increment acceptedCountInWindow
-        ESP -> EEPROM : Clear cooldownUntilEpoch
-        ESP -> EEPROM : Clear suppressedWakeCount
+        ESP -> NVS : Update windowStartEpoch
+        ESP -> NVS : Increment acceptedCountInWindow
+        ESP -> NVS : Clear cooldownUntilEpoch
+        ESP -> NVS : Clear suppressedWakeCount
       end
     else NTP failed
+      ESP -> MQTT : Publish "Time sync failed; skipping throttle"
       ESP -> ESP : Continue without throttle decision
     end
 
     alt Previous suppressed wakes exist
       ESP -> MQTT : Publish "Suppressed_wakes:N"
-      ESP -> EEPROM : Clear suppressedWakeCount
+      ESP -> NVS : Clear suppressedWakeCount
     end
 
     ESP -> ESP : Randomize currentRelayOnDurationMs
     ESP -> MQTT : Publish motion payload
-    ESP -> RELAY : ON
-    ESP -> MQTT : Publish "Relay ON (local motion trigger)"
+    alt Local relay enabled
+      ESP -> RELAY : ON
+      ESP -> MQTT : Publish "Relay ON (local motion trigger)"
+    else Local relay skipped by config
+      ESP -> MQTT : Publish "Local relay skipped by config"
+    end
 
-    loop For awake window
+    loop For post-trigger awake window
       alt Relay duration elapsed
         ESP -> RELAY : OFF
         ESP -> MQTT : Publish "Relay OFF (timer expired)"
@@ -81,7 +83,7 @@ else Wi-Fi connected
     ESP -> MQTT : Publish "Going to deep sleep..."
     ESP -> WIFI : Disconnect
     ESP -> ESP : Short settle delay
-    ESP -> ESP : Deep sleep until next RST
+    ESP -> ESP : Rearm GPIO low wake and deep sleep
     deactivate ESP
   end
 end

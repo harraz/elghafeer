@@ -22,7 +22,7 @@ const bool SKIP_LOCAL_RELAY = DEFAULT_SKIP_LOCAL_RELAY;
 
 constexpr unsigned int RELAY_ON_MIN_DURATION_MS = DEFAULT_RELAY_ON_MIN_DURATION_MS;
 constexpr unsigned int RELAY_ON_MAX_DURATION_MS = DEFAULT_RELAY_ON_MAX_DURATION_MS;
-constexpr unsigned long AWAKE_WINDOW_MS = DEFAULT_AWAKE_WINDOW_MS;
+constexpr unsigned long POST_TRIGGER_AWAKE_WINDOW_MS = DEFAULT_POST_TRIGGER_AWAKE_WINDOW_MS;
 constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = DEFAULT_WIFI_CONNECT_TIMEOUT_MS;
 constexpr unsigned long MQTT_CONNECT_TIMEOUT_MS = DEFAULT_MQTT_CONNECT_TIMEOUT_MS;
 constexpr unsigned long TIME_SYNC_TIMEOUT_MS = DEFAULT_TIME_SYNC_TIMEOUT_MS;
@@ -135,7 +135,7 @@ bool syncTime() {
     if (now > MIN_VALID_EPOCH) {
       return true;
     }
-    // Wait a short time before checking again so we do not spin in a tight loop.
+    // Poll NTP a few times per second without burning CPU in a tight loop.
     delay(250);
   }
 
@@ -231,6 +231,7 @@ bool setup_wifi() {
   unsigned long wifiStartedAt = millis();
   while (WiFi.status() != WL_CONNECTED &&
          (millis() - wifiStartedAt < WIFI_CONNECT_TIMEOUT_MS)) {
+    // Yield between connection attempts so the ESP32-C3 Wi-Fi stack can progress.
     delay(500);
     debugPrint("Connecting...");
   }
@@ -258,6 +259,7 @@ void goToSleep(bool publishStatus = true) {
   // If MQTT is connected, send one last status message before sleeping.
   if (publishStatus && client.connected()) {
     client.publish(statusTopic.c_str(), "Going to deep sleep...");
+    // Give the final MQTT status packet a moment to leave before disconnecting.
     delay(75);
     client.disconnect();
   }
@@ -266,7 +268,8 @@ void goToSleep(bool publishStatus = true) {
     WiFi.disconnect(true, true);
   }
   debugPrint("Sleeping...");
-  delay(1500);  // wait briefly to let the PIR/reset path settle before sleeping
+  // Let the wake-input path settle before deep sleep rearms the GPIO wake source.
+  delay(1500);
   esp_deep_sleep_enable_gpio_wakeup(BIT(WAKE_PIN), ESP_GPIO_WAKEUP_GPIO_LOW);
   esp_deep_sleep_start();
 }
@@ -314,6 +317,7 @@ void setup() {
   while (!client.connected() &&
          (millis() - mqttStartedAt < MQTT_CONNECT_TIMEOUT_MS)) {
     client.connect(mac.c_str());
+    // Avoid hammering MQTT reconnects back-to-back while the socket handshake completes.
     delay(500);
   }
   if (!client.connected()) {
@@ -387,7 +391,7 @@ void setup() {
   doc["location"] = GHAFEER_NAME;
   doc["ip"] = WiFi.localIP().toString();
   doc["relay_duration_ms"] = currentRelayOnDurationMs;
-  doc["awake_window_ms"] = AWAKE_WINDOW_MS;
+  doc["post_trigger_awake_window_ms"] = POST_TRIGGER_AWAKE_WINDOW_MS;
   doc["fw_branch"] = FW_GIT_BRANCH;
   doc["fw_sha"] = FW_GIT_SHA;
 
@@ -438,13 +442,13 @@ void setup() {
     lastRelayOnMs = millis();
     client.publish(statusTopic.c_str(), "Relay ON (local motion trigger)");
   } else {
-    publishStatusStep("Local relay skipped by config");
+    client.publish(statusTopic.c_str(), "Local relay skipped by config");
   }
 
   // Stay awake for the configured post-trigger window so the relay can finish
   // its randomized ON duration before the ESP goes back to sleep.
   unsigned long awakeLoopStartedAt = millis();
-  while (millis() - awakeLoopStartedAt < AWAKE_WINDOW_MS) {
+  while (millis() - awakeLoopStartedAt < POST_TRIGGER_AWAKE_WINDOW_MS) {
     client.loop();
 
     // Turn relay OFF when duration elapsed
@@ -455,6 +459,7 @@ void setup() {
       publishStatusStep("Relay timer expired");
       tracePrint("TRACE: relay_off");
     }
+    // Keep MQTT alive without spinning this post-trigger loop unnecessarily fast.
     delay(10);
   }
 
