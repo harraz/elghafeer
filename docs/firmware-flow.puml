@@ -37,11 +37,13 @@ else Wi-Fi connected
       alt Lockout active
         ESP -> NVS : Increment suppressedWakeCount
         ESP -> MQTT : Publish "Wake suppressed: lockout active, count:N"
+        ESP -> MQTT : Service MQTT briefly before sleep
         ESP -> ESP : Deep sleep
         deactivate ESP
       else Rate limit exceeded
         ESP -> NVS : Increment suppressedWakeCount
         ESP -> MQTT : Publish "Wake suppressed: rate limit exceeded, count:N"
+        ESP -> MQTT : Service MQTT briefly before sleep
         ESP -> ESP : Deep sleep
         deactivate ESP
       else Accepted
@@ -52,11 +54,13 @@ else Wi-Fi connected
       end
     else NTP failed
       ESP -> MQTT : Publish "Time sync failed; skipping throttle"
+      ESP -> MQTT : Service MQTT briefly
       ESP -> ESP : Continue without throttle decision
     end
 
     alt Previous suppressed wakes exist
       ESP -> MQTT : Publish "Suppressed_wakes:N"
+      ESP -> MQTT : Service MQTT briefly
       ESP -> NVS : Clear suppressedWakeCount
     end
 
@@ -81,6 +85,7 @@ else Wi-Fi connected
     end
 
     ESP -> MQTT : Publish "Going to deep sleep..."
+    ESP -> MQTT : Service MQTT briefly before disconnect
     ESP -> WIFI : Disconnect
     ESP -> ESP : Short settle delay
     ESP -> ESP : Rearm GPIO low wake and deep sleep

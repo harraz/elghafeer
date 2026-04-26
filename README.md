@@ -13,12 +13,17 @@ publish-only, and then returns to deep sleep.
 - Relay ON duration: randomized between `7000` and `10000` ms
 - Post-trigger awake window after an accepted trigger: `12000` ms
 - Trigger window: `60000` ms
-- Accepted triggers allowed in one window: `2`
+- Accepted triggers allowed in one window: `3`
 - Lockout after the limit is exceeded: `300000` ms
 
 The limiter state is stored in Preferences/NVS so it survives resets and power
 loss. The firmware also keeps a suppressed-wake count and publishes that
 summary on the next accepted wake as `Suppressed_wakes:N`.
+
+Status messages that are followed immediately by Wi-Fi disconnect or deep
+sleep are briefly flushed through the MQTT client before shutdown. This makes
+terminal events such as suppressed wakes and sleep entry more reliable on the
+broker while still using QoS 0 publishes.
 
 **Configuration Layout**
 
