@@ -36,11 +36,13 @@ alt Wi-Fi timeout
       alt Lockout active
         ESP -> EEPROM : Increment suppressedWakeCount
         ESP -> MQTT : Publish "Wake suppressed: lockout active, count:N"
+        ESP -> MQTT : Service MQTT briefly before sleep
         ESP -> ESP : Deep sleep
         deactivate ESP
       else Rate limit exceeded
         ESP -> EEPROM : Increment suppressedWakeCount
         ESP -> MQTT : Publish "Wake suppressed: rate limit exceeded, count:N"
+        ESP -> MQTT : Service MQTT briefly before sleep
         ESP -> ESP : Deep sleep
         deactivate ESP
       else Accepted
@@ -50,14 +52,14 @@ alt Wi-Fi timeout
         ESP -> EEPROM : Clear suppressedWakeCount
       end
     else NTP failed
-      opt DEBUG enabled
-        ESP -> MQTT : Publish "Time sync failed; skipping throttle"
-      end
+      ESP -> MQTT : Publish "Time sync failed; skipping throttle"
+      ESP -> MQTT : Service MQTT briefly
       ESP -> ESP : Continue without throttle decision
     end
 
     alt Previous suppressed wakes exist
       ESP -> MQTT : Publish "Suppressed_wakes:N"
+      ESP -> MQTT : Service MQTT briefly
       ESP -> EEPROM : Clear suppressedWakeCount
     end
 
@@ -82,6 +84,7 @@ alt Wi-Fi timeout
     end
 
     ESP -> MQTT : Publish "Going to deep sleep..."
+    ESP -> MQTT : Service MQTT briefly before disconnect
     ESP -> WIFI : Disconnect
     ESP -> ESP : Short settle delay
     ESP -> ESP : Deep sleep until next RST

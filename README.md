@@ -20,6 +20,11 @@ The limiter state is stored in EEPROM so it survives resets and power loss.
 The firmware also keeps a suppressed-wake count and publishes that summary on
 the next accepted wake as `Suppressed_wakes:N`.
 
+Status messages that are followed immediately by Wi-Fi disconnect or deep
+sleep are briefly flushed through the MQTT client before shutdown. This makes
+terminal events such as suppressed wakes and sleep entry more reliable on the
+broker while still using QoS 0 publishes.
+
 **Configuration Layout**
 
 - [device_config.example.json](/home/harraz/projects/home_projects_new/elghafeer/device_config.example.json)
@@ -84,6 +89,7 @@ Normal operation keeps the status topic focused on important events:
 - `Relay OFF (timer expired)`
 - `Going to deep sleep...`
 - `Local relay skipped by config`
+- `Time sync failed; skipping throttle`
 - `Wake suppressed: rate limit exceeded, count:N`
 - `Wake suppressed: lockout active, count:N`
 - `Suppressed_wakes:N`
