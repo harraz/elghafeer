@@ -1,13 +1,20 @@
 import json
 from pathlib import Path
 
-Import("env")
+# When PlatformIO runs this file as a pre-build hook it injects `Import` and
+# `env` from SCons. When the script is run directly for testing, those symbols
+# do not exist, so fall back to the repository root derived from this file path.
+try:
+    Import("env")
+    PROJECT_DIR = Path(env["PROJECT_DIR"])
+except NameError:
+    PROJECT_DIR = Path(__file__).resolve().parents[1]
 
-
-PROJECT_DIR = Path(env["PROJECT_DIR"])
 CONFIG_PATH = PROJECT_DIR / "device_config.json"
 HEADER_PATH = PROJECT_DIR / "include" / "settings.h"
 
+# Keep the schema in one place so bad or stale deployment configs fail early
+# with a clear error instead of generating a broken settings header.
 REQUIRED_KEYS = {
     "device_ghafeer_name": str,
     "mqtt_broker_host": str,
@@ -32,6 +39,7 @@ OPTIONAL_KEYS = {
 
 
 def load_config():
+    """Load and validate the per-device JSON config used for header generation."""
     if not CONFIG_PATH.exists():
         raise RuntimeError(
             "Missing device_config.json. Copy device_config.example.json to "
@@ -59,14 +67,17 @@ def load_config():
 
 
 def cpp_bool(value):
+    """Convert a Python bool to a lowercase C++ boolean literal."""
     return "true" if value else "false"
 
 
 def escape_cpp_string(value):
+    """Escape a Python string so it can be embedded safely in a C++ string literal."""
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def write_header(config):
+    """Render the validated JSON config into the generated settings header."""
     header_contents = f"""#pragma once
 
 // This file is generated during the PlatformIO build from device_config.json.
@@ -93,4 +104,9 @@ constexpr int DEFAULT_WAKE_GPIO_PIN = {config.get("wake_gpio_pin", 2)};
     HEADER_PATH.write_text(header_contents, encoding="utf-8")
 
 
-write_header(load_config())
+def main():
+    """Entry point used by PlatformIO's pre-build hook and direct test runs."""
+    write_header(load_config())
+
+
+main()

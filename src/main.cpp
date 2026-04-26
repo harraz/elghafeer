@@ -1,6 +1,9 @@
 #include <WiFi.h>
 #include <Preferences.h>
 #include <esp_sleep.h>
+#if DIAGNOSTIC_RESET_REASON
+#include <esp_system.h>
+#endif
 
 #include <PubSubClient.h>
 #include "settings.h"
@@ -215,6 +218,25 @@ void publishStatusStep(const String &msg) {
   }
 }
 
+bool publishStatusAndFlush(const String &msg, unsigned long flushMs = 200) {
+  if (!client.connected()) {
+    return false;
+  }
+
+  bool queued = client.publish(statusTopic.c_str(), msg.c_str());
+
+  // Several status messages are followed immediately by Wi-Fi disconnect or
+  // deep sleep. QoS 0 publish only queues/writes the packet locally; this short
+  // service window gives PubSubClient and the ESP Wi-Fi stack time to push it
+  // onto the network before we shut the radio down.
+  unsigned long startedAt = millis();
+  while (millis() - startedAt < flushMs) {
+    client.loop();
+    delay(10);
+  }
+  return queued;
+}
+
 void publishFirmwareIdentity() {
   String versionMsg = "Firmware build: " + String(FW_GIT_BRANCH) + "@" + String(FW_GIT_SHA);
 
@@ -222,6 +244,70 @@ void publishFirmwareIdentity() {
   // even when MQTT is not being watched.
   debugPrint(versionMsg);
 }
+
+#if DIAGNOSTIC_RESET_REASON
+const char* resetReasonName(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON:
+      return "poweron";
+    case ESP_RST_EXT:
+      return "external";
+    case ESP_RST_SW:
+      return "software";
+    case ESP_RST_PANIC:
+      return "panic";
+    case ESP_RST_INT_WDT:
+      return "interrupt_watchdog";
+    case ESP_RST_TASK_WDT:
+      return "task_watchdog";
+    case ESP_RST_WDT:
+      return "watchdog";
+    case ESP_RST_DEEPSLEEP:
+      return "deep_sleep";
+    case ESP_RST_BROWNOUT:
+      return "brownout";
+    case ESP_RST_SDIO:
+      return "sdio";
+    default:
+      return "unknown";
+  }
+}
+
+const char* wakeupCauseName(esp_sleep_wakeup_cause_t cause) {
+  switch (cause) {
+    case ESP_SLEEP_WAKEUP_UNDEFINED:
+      return "undefined";
+    case ESP_SLEEP_WAKEUP_EXT0:
+      return "ext0";
+    case ESP_SLEEP_WAKEUP_EXT1:
+      return "ext1";
+    case ESP_SLEEP_WAKEUP_TIMER:
+      return "timer";
+    case ESP_SLEEP_WAKEUP_TOUCHPAD:
+      return "touchpad";
+    case ESP_SLEEP_WAKEUP_ULP:
+      return "ulp";
+    case ESP_SLEEP_WAKEUP_GPIO:
+      return "gpio";
+    case ESP_SLEEP_WAKEUP_UART:
+      return "uart";
+    default:
+      return "unknown";
+  }
+}
+
+void publishResetDiagnostic() {
+  if (!client.connected()) {
+    return;
+  }
+
+  esp_reset_reason_t resetReason = esp_reset_reason();
+  esp_sleep_wakeup_cause_t wakeupCause = esp_sleep_get_wakeup_cause();
+  String resetDiagMsg = "Reset_diag:r=" + String(resetReasonName(resetReason)) +
+                        ",w=" + String(wakeupCauseName(wakeupCause));
+  client.publish(statusTopic.c_str(), resetDiagMsg.c_str());
+}
+#endif
 
 // Connect to Wi-Fi, but stop trying once the Wi-Fi timeout expires.
 bool setup_wifi() {
@@ -258,9 +344,7 @@ void goToSleep(bool publishStatus = true) {
   Serial.flush();
   // If MQTT is connected, send one last status message before sleeping.
   if (publishStatus && client.connected()) {
-    client.publish(statusTopic.c_str(), "Going to deep sleep...");
-    // Give the final MQTT status packet a moment to leave before disconnecting.
-    delay(75);
+    publishStatusAndFlush("Going to deep sleep...");
     client.disconnect();
   }
   // Turn Wi-Fi off before sleeping to reduce power usage and clean up state.
@@ -328,6 +412,9 @@ void setup() {
   tracePrint("TRACE: mqtt_connected");
 
   publishFirmwareIdentity();
+#if DIAGNOSTIC_RESET_REASON
+  publishResetDiagnostic();
+#endif
   publishStatusStep("Boot complete: WiFi and MQTT connected");
 
   PersistedThrottleState persistedState;
@@ -341,7 +428,9 @@ void setup() {
   }
 
   if (!syncTime()) {
-    client.publish(statusTopic.c_str(), "Time sync failed; skipping throttle");
+    // Keep this status reliable because without NTP we skip the limiter and
+    // continue as an accepted wake.
+    publishStatusAndFlush("Time sync failed; skipping throttle");
     publishStatusStep("Time sync failed; skipping throttle");
     tracePrint("TRACE: time_sync_failed");
   } else {
@@ -359,7 +448,9 @@ void setup() {
         suppressedCount = updatedState.suppressedWakeCount;
       }
       String statusMsg = "Wake suppressed: lockout active, count:" + String(suppressedCount);
-      client.publish(statusTopic.c_str(), statusMsg.c_str());
+      // This wake sleeps immediately after publishing, so flush before
+      // disconnecting or the terminal status can be lost.
+      publishStatusAndFlush(statusMsg);
       tracePrint("TRACE: wake_suppressed_lockout");
       goToSleep(false);
     }
@@ -372,7 +463,9 @@ void setup() {
         suppressedCount = updatedState.suppressedWakeCount;
       }
       String statusMsg = "Wake suppressed: rate limit exceeded, count:" + String(suppressedCount);
-      client.publish(statusTopic.c_str(), statusMsg.c_str());
+      // This wake sleeps immediately after publishing, so flush before
+      // disconnecting or the terminal status can be lost.
+      publishStatusAndFlush(statusMsg);
       tracePrint("TRACE: wake_suppressed_rate_limit");
       goToSleep(false);
     }
@@ -419,7 +512,9 @@ void setup() {
 
   if (suppressedWakeCount > 0) {
     String suppressedMsg = "Suppressed_wakes:" + String(suppressedWakeCount);
-    client.publish(statusTopic.c_str(), suppressedMsg.c_str());
+    // Publish the accumulated count before clearing it, and give MQTT time to
+    // transmit so the summary is not silently lost.
+    publishStatusAndFlush(suppressedMsg);
 
     // The summary has now been reported, so clear the persisted counter.
     // We save this immediately so the same old count is not announced again
