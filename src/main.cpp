@@ -1,9 +1,6 @@
 #include <WiFi.h>
 #include <Preferences.h>
 #include <esp_sleep.h>
-#if DIAGNOSTIC_RESET_REASON
-#include <esp_system.h>
-#endif
 
 #include <PubSubClient.h>
 #include "settings.h"
@@ -245,70 +242,6 @@ void publishFirmwareIdentity() {
   debugPrint(versionMsg);
 }
 
-#if DIAGNOSTIC_RESET_REASON
-const char* resetReasonName(esp_reset_reason_t reason) {
-  switch (reason) {
-    case ESP_RST_POWERON:
-      return "poweron";
-    case ESP_RST_EXT:
-      return "external";
-    case ESP_RST_SW:
-      return "software";
-    case ESP_RST_PANIC:
-      return "panic";
-    case ESP_RST_INT_WDT:
-      return "interrupt_watchdog";
-    case ESP_RST_TASK_WDT:
-      return "task_watchdog";
-    case ESP_RST_WDT:
-      return "watchdog";
-    case ESP_RST_DEEPSLEEP:
-      return "deep_sleep";
-    case ESP_RST_BROWNOUT:
-      return "brownout";
-    case ESP_RST_SDIO:
-      return "sdio";
-    default:
-      return "unknown";
-  }
-}
-
-const char* wakeupCauseName(esp_sleep_wakeup_cause_t cause) {
-  switch (cause) {
-    case ESP_SLEEP_WAKEUP_UNDEFINED:
-      return "undefined";
-    case ESP_SLEEP_WAKEUP_EXT0:
-      return "ext0";
-    case ESP_SLEEP_WAKEUP_EXT1:
-      return "ext1";
-    case ESP_SLEEP_WAKEUP_TIMER:
-      return "timer";
-    case ESP_SLEEP_WAKEUP_TOUCHPAD:
-      return "touchpad";
-    case ESP_SLEEP_WAKEUP_ULP:
-      return "ulp";
-    case ESP_SLEEP_WAKEUP_GPIO:
-      return "gpio";
-    case ESP_SLEEP_WAKEUP_UART:
-      return "uart";
-    default:
-      return "unknown";
-  }
-}
-
-void publishResetDiagnostic() {
-  if (!client.connected()) {
-    return;
-  }
-
-  esp_reset_reason_t resetReason = esp_reset_reason();
-  esp_sleep_wakeup_cause_t wakeupCause = esp_sleep_get_wakeup_cause();
-  String resetDiagMsg = "Reset_diag:r=" + String(resetReasonName(resetReason)) +
-                        ",w=" + String(wakeupCauseName(wakeupCause));
-  client.publish(statusTopic.c_str(), resetDiagMsg.c_str());
-}
-#endif
-
 // Connect to Wi-Fi, but stop trying once the Wi-Fi timeout expires.
 bool setup_wifi() {
   tracePrint("TRACE: wifi_connect_start");
@@ -412,9 +345,6 @@ void setup() {
   tracePrint("TRACE: mqtt_connected");
 
   publishFirmwareIdentity();
-#if DIAGNOSTIC_RESET_REASON
-  publishResetDiagnostic();
-#endif
   publishStatusStep("Boot complete: WiFi and MQTT connected");
 
   PersistedThrottleState persistedState;
