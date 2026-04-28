@@ -161,7 +161,7 @@ void handleCommand(String cmd) {
   }
   else if (cmd == "HELP") {
     // Build help array explicitly to avoid null root quirks
-    JsonArray commands = doc.createNestedArray("commands");
+    JsonArray commands = doc["commands"].to<JsonArray>();
 
     addHelp(commands, "REL_ON", "Turn relay ON");
     addHelp(commands, "REL_OFF", "Turn relay OFF");
