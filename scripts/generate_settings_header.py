@@ -1,13 +1,20 @@
 import json
 from pathlib import Path
 
-Import("env")
+# When PlatformIO runs this file as a pre-build hook it injects `Import` and
+# `env` from SCons. When the script is run directly for testing, those symbols
+# do not exist, so fall back to the repository root derived from this file path.
+try:
+    Import("env")
+    PROJECT_DIR = Path(env["PROJECT_DIR"])
+except NameError:
+    PROJECT_DIR = Path(__file__).resolve().parents[1]
 
-
-PROJECT_DIR = Path(env["PROJECT_DIR"])
 CONFIG_PATH = PROJECT_DIR / "device_config.json"
 HEADER_PATH = PROJECT_DIR / "include" / "settings.h"
 
+# Keep the schema in one place so bad or stale deployment configs fail early
+# with a clear error instead of generating a broken settings header.
 REQUIRED_KEYS = {
     "device_ghafeer_name": str,
     "mqtt_broker_host": str,
@@ -17,19 +24,11 @@ REQUIRED_KEYS = {
     "default_relay_max_on_duration_ms": int,
     "default_max_pir_interval_ms": int,
     "default_skip_local_relay": bool,
-    "relay_on_min_duration_ms": int,
-    "relay_on_max_duration_ms": int,
-    "awake_window_ms": int,
-    "wifi_connect_timeout_ms": int,
-    "mqtt_connect_timeout_ms": int,
-    "time_sync_timeout_ms": int,
-    "trigger_window_ms": int,
-    "max_accepted_in_window": int,
-    "lockout_ms": int,
 }
 
 
 def load_config():
+    """Load and validate the per-device JSON config used for header generation."""
     if not CONFIG_PATH.exists():
         raise RuntimeError(
             "Missing device_config.json. Copy device_config.example.json to "
@@ -51,14 +50,17 @@ def load_config():
 
 
 def cpp_bool(value):
+    """Convert a Python bool to a lowercase C++ boolean literal."""
     return "true" if value else "false"
 
 
 def escape_cpp_string(value):
+    """Escape a Python string so it can be embedded safely in a C++ string literal."""
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def write_header(config):
+    """Render the validated JSON config into the generated settings header."""
     header_contents = f"""#pragma once
 
 // This file is generated during the PlatformIO build from device_config.json.
@@ -72,18 +74,14 @@ constexpr unsigned int DEFAULT_PIR_INTERVAL_MS = {config["default_pir_interval_m
 constexpr unsigned int DEFAULT_RELAY_MAX_ON_DURATION_MS = {config["default_relay_max_on_duration_ms"]};
 constexpr unsigned int DEFAULT_MAX_PIR_INTERVAL_MS = {config["default_max_pir_interval_ms"]};
 constexpr bool DEFAULT_SKIP_LOCAL_RELAY = {cpp_bool(config["default_skip_local_relay"])};
-constexpr unsigned int DEFAULT_RELAY_ON_MIN_DURATION_MS = {config["relay_on_min_duration_ms"]};
-constexpr unsigned int DEFAULT_RELAY_ON_MAX_DURATION_MS = {config["relay_on_max_duration_ms"]};
-constexpr unsigned long DEFAULT_AWAKE_WINDOW_MS = {config["awake_window_ms"]}UL;
-constexpr unsigned long DEFAULT_WIFI_CONNECT_TIMEOUT_MS = {config["wifi_connect_timeout_ms"]}UL;
-constexpr unsigned long DEFAULT_MQTT_CONNECT_TIMEOUT_MS = {config["mqtt_connect_timeout_ms"]}UL;
-constexpr unsigned long DEFAULT_TIME_SYNC_TIMEOUT_MS = {config["time_sync_timeout_ms"]}UL;
-constexpr unsigned long DEFAULT_TRIGGER_WINDOW_MS = {config["trigger_window_ms"]}UL;
-constexpr uint32_t DEFAULT_MAX_ACCEPTED_IN_WINDOW = {config["max_accepted_in_window"]};
-constexpr unsigned long DEFAULT_LOCKOUT_MS = {config["lockout_ms"]}UL;
 """
 
     HEADER_PATH.write_text(header_contents, encoding="utf-8")
 
 
-write_header(load_config())
+def main():
+    """Entry point used by PlatformIO's pre-build hook and direct test runs."""
+    write_header(load_config())
+
+
+main()

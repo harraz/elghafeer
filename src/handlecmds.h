@@ -10,6 +10,7 @@
 // Forward declarations
 extern PubSubClient client;
 extern String statusTopic;
+bool publishStatusAndFlush(const String &msg, unsigned long flushMs = 200);
 
 // Function declarations
 void handleCommand(String cmd);
@@ -102,7 +103,7 @@ void handleCommand(String cmd) {
     String value;
     long temp = RELAY_MAX_ON_DURATION;
     if (extractValue(cmd, "RELAY_MAX_ON_DURATION:", value) &&
-        parseInt(value, temp, (long)MIN_RELAY_ON_DURATION_MS, (long)MAX_RELAY_ON_DURATION_MS)) {
+        parseInt(value, temp, (long)RELAY_ON_DURATION_MIN_LIMIT_MS, (long)RELAY_ON_DURATION_MAX_LIMIT_MS)) {
       RELAY_MAX_ON_DURATION = temp;
       doc["status"] = "ok";
       doc["RELAY_MAX_ON_DURATION"] = RELAY_MAX_ON_DURATION;
@@ -115,8 +116,7 @@ void handleCommand(String cmd) {
     doc["status"] = "ok";
     doc["message"] = "Restarting...";
     serializeJson(doc, response);
-    client.publish(statusTopic.c_str(), response.c_str());
-    delay(1000);
+    publishStatusAndFlush(response);
     ESP.restart();
   }
   else if (cmd.startsWith("DEBUG:")) {
@@ -153,6 +153,8 @@ void handleCommand(String cmd) {
     doc["pir_interval"] = PIR_INTERVAL;
     doc["max_pir_interval_ms"] = MAX_PIR_INTERVAL_MS;
     doc["relay_max_on_duration"] = RELAY_MAX_ON_DURATION;
+    doc["relay_on_duration_min_limit_ms"] = RELAY_ON_DURATION_MIN_LIMIT_MS;
+    doc["relay_on_duration_max_limit_ms"] = RELAY_ON_DURATION_MAX_LIMIT_MS;
     doc["debug"] = DEBUG;
     doc["fw_branch"] = FW_GIT_BRANCH;
     doc["fw_sha"] = FW_GIT_SHA;
@@ -164,13 +166,13 @@ void handleCommand(String cmd) {
     addHelp(commands, "REL_ON", "Turn relay ON");
     addHelp(commands, "REL_OFF", "Turn relay OFF");
     addHelp(commands, "REL_STATUS", "Get relay status");
-    addHelp(commands, "PIR_INTERVAL:<ms>", "Set PIR sensing interval");
+    addHelp(commands, "PIR_INTERVAL:<ms>", "Set PIR sensing interval, 0..MAX_PIR_INTERVAL_MS");
     addHelp(commands, "SKIP_LOCAL_RELAY:<true/false>", "Bypass local relay control");
     addHelp(commands, "DEBUG:<true/false>", "Enable/disable debug");
     addHelp(commands, "GHAFEER_NAME:<name>", "Set device name");
     addHelp(commands, "STATUS", "Get full device status");
     addHelp(commands, "RESTART/REBOOT", "Restart device");
-    addHelp(commands, "RELAY_MAX_ON_DURATION:<ms>", "Set relay max ON duration");
+    addHelp(commands, "RELAY_MAX_ON_DURATION:<ms>", "Set relay max ON duration, RELAY_ON_DURATION_MIN_LIMIT_MS..RELAY_ON_DURATION_MAX_LIMIT_MS");
     addHelp(commands, "HELP", "Show this help message");
   }
   else {

@@ -6,8 +6,8 @@
 #include <Arduino.h>
 #include <PubSubClient.h>
 
-#define MIN_RELAY_ON_DURATION_MS   3000UL      // 3 s: prevents chattering / rapid toggles
-#define MAX_RELAY_ON_DURATION_MS   3600000UL   // 1 h: safety cutoff for long activations
+#define RELAY_ON_DURATION_MIN_LIMIT_MS   3000UL      // 3 s: prevents chattering / rapid toggles
+#define RELAY_ON_DURATION_MAX_LIMIT_MS   3600000UL   // 1 h: internal safety cutoff
 
 extern const int RELAY_PIN;
 extern unsigned int PIR_INTERVAL;

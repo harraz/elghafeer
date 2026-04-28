@@ -44,6 +44,24 @@ void debugPrint(const String &msg) {
   }
 }
 
+bool publishStatusAndFlush(const String &msg, unsigned long flushMs) {
+  if (!client.connected()) {
+    return false;
+  }
+
+  bool queued = client.publish(statusTopic.c_str(), msg.c_str());
+
+  // Terminal actions such as RESTART can cut power to the network stack before
+  // QoS 0 status bytes leave the device. This short service window gives
+  // PubSubClient and the ESP Wi-Fi stack time to push the response out first.
+  unsigned long startedAt = millis();
+  while (millis() - startedAt < flushMs) {
+    client.loop();
+    delay(10);
+  }
+  return queued;
+}
+
 void setup_wifi() {
   delay(10);
   Serial.begin(115200);
