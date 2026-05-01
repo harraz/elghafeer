@@ -40,7 +40,7 @@ broker while still using QoS 0 publishes.
   Wi-Fi credentials and any other secrets that should not be committed broadly.
 
 - [scripts/generate_settings_header.py](/home/harraz/projects/home_projects_new/elghafeer/scripts/generate_settings_header.py)
-  Build step that turns `device_config.json` into `include/settings.h`.
+  Build step that turns `device_config.json` into `include/settings.h`. It can also be run directly with `.venv/bin/python scripts/generate_settings_header.py` to validate local config changes before a full PlatformIO build.
 
 - [platformio.ini](/home/harraz/projects/home_projects_new/elghafeer/platformio.ini)
   PlatformIO environment settings plus build-time Git metadata injection.
