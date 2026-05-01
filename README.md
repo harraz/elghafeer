@@ -40,7 +40,7 @@ broker while still using QoS 0 publishes.
   Wi-Fi credentials and other local secrets that should not be committed broadly.
 
 - [scripts/generate_settings_header.py](/home/harraz/projects/home_projects_new/elghafeer/scripts/generate_settings_header.py)
-  Build step that turns `device_config.json` into `include/settings.h`.
+  Build step that turns `device_config.json` into `include/settings.h`. It can also be run directly with `.venv/bin/python scripts/generate_settings_header.py` to validate local config changes before a full PlatformIO build.
 
 - [platformio.ini](/home/harraz/projects/home_projects_new/elghafeer/platformio.ini)
   PlatformIO environment settings plus build-time Git metadata injection.
@@ -60,7 +60,7 @@ firmware can be identified later without rebuilding it.
 **Build & Flash**
 
 1. Copy `device_config.example.json` to `device_config.json`.
-2. Edit the device name, broker host, timing values, and relay behavior.
+2. Edit the device name, broker host, timing values, relay GPIO, and relay behavior.
 3. Run `platformio run` or `platformio run -t upload`.
 4. The build generates `include/settings.h` from `device_config.json` automatically.
 
@@ -68,6 +68,9 @@ firmware can be identified later without rebuilding it.
 
 - `default_skip_local_relay`
   When `true`, the node still publishes motion/status MQTT messages but does not drive the local relay.
+
+- `relay_gpio_pin`
+  GPIO number used to drive the relay. The ESP-12E deployment uses GPIO12 / D6 by default.
 
 - `relay_on_min_duration_ms` / `relay_on_max_duration_ms`
   Bounds for the randomized local relay ON duration on accepted wakes.
