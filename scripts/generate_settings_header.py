@@ -37,6 +37,13 @@ OPTIONAL_KEYS = {
     "wake_gpio_pin": int,
 }
 
+REMOVED_KEYS = {
+    "default_pir_interval_ms",
+    "default_relay_max_on_duration_ms",
+    "default_max_pir_interval_ms",
+    "awake_window_ms",
+}
+
 
 def load_config():
     """Load and validate the per-device JSON config used for header generation."""
@@ -51,7 +58,17 @@ def load_config():
 
     for key, expected_type in REQUIRED_KEYS.items():
         if key not in config:
-            raise RuntimeError(f"device_config.json is missing required key: {key}")
+            stale_keys = sorted(REMOVED_KEYS.intersection(config))
+            stale_note = ""
+            if stale_keys:
+                stale_note = (
+                    " Found removed key(s): "
+                    + ", ".join(stale_keys)
+                    + ". Refresh device_config.json from device_config.example.json."
+                )
+            raise RuntimeError(
+                f"device_config.json is missing required key: {key}.{stale_note}"
+            )
         if not isinstance(config[key], expected_type):
             raise RuntimeError(
                 f"device_config.json key {key} must be a {expected_type.__name__}"
