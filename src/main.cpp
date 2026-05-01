@@ -12,7 +12,7 @@
 
 JsonDocument doc;
 
-const int RELAY_PIN = 12;  // D6
+const int RELAY_PIN = DEFAULT_RELAY_GPIO_PIN;  // D6 on the ESP-12E deployment
 const char* GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 const bool DEBUG = DEFAULT_DEBUG;
 const bool SKIP_LOCAL_RELAY = DEFAULT_SKIP_LOCAL_RELAY;

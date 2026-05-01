@@ -1,10 +1,14 @@
 import json
 from pathlib import Path
 
-Import("env")
+# PlatformIO injects `Import` and `env` when this file runs as a pre-build
+# hook. Fall back to the repo root so the same script can be tested directly.
+try:
+    Import("env")
+    PROJECT_DIR = Path(env["PROJECT_DIR"])
+except NameError:
+    PROJECT_DIR = Path(__file__).resolve().parents[1]
 
-
-PROJECT_DIR = Path(env["PROJECT_DIR"])
 CONFIG_PATH = PROJECT_DIR / "device_config.json"
 HEADER_PATH = PROJECT_DIR / "include" / "settings.h"
 
@@ -25,8 +29,20 @@ REQUIRED_KEYS = {
     "lockout_ms": int,
 }
 
+REMOVED_KEYS = {
+    "default_pir_interval_ms",
+    "default_relay_max_on_duration_ms",
+    "default_max_pir_interval_ms",
+    "awake_window_ms",
+}
+
+OPTIONAL_KEYS = {
+    "relay_gpio_pin": int,
+}
+
 
 def load_config():
+    """Load and validate the per-device JSON config used for header generation."""
     if not CONFIG_PATH.exists():
         raise RuntimeError(
             "Missing device_config.json. Copy device_config.example.json to "
@@ -38,8 +54,24 @@ def load_config():
 
     for key, expected_type in REQUIRED_KEYS.items():
         if key not in config:
-            raise RuntimeError(f"device_config.json is missing required key: {key}")
+            stale_keys = sorted(REMOVED_KEYS.intersection(config))
+            stale_note = ""
+            if stale_keys:
+                stale_note = (
+                    " Found removed key(s): "
+                    + ", ".join(stale_keys)
+                    + ". Refresh device_config.json from device_config.example.json."
+                )
+            raise RuntimeError(
+                f"device_config.json is missing required key: {key}.{stale_note}"
+            )
         if not isinstance(config[key], expected_type):
+            raise RuntimeError(
+                f"device_config.json key {key} must be a {expected_type.__name__}"
+            )
+
+    for key, expected_type in OPTIONAL_KEYS.items():
+        if key in config and not isinstance(config[key], expected_type):
             raise RuntimeError(
                 f"device_config.json key {key} must be a {expected_type.__name__}"
             )
@@ -48,14 +80,17 @@ def load_config():
 
 
 def cpp_bool(value):
+    """Convert a Python bool to a lowercase C++ boolean literal."""
     return "true" if value else "false"
 
 
 def escape_cpp_string(value):
+    """Escape a Python string so it can be embedded safely in a C++ string literal."""
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def write_header(config):
+    """Render the validated JSON config into the generated settings header."""
     header_contents = f"""#pragma once
 
 // This file is generated during the PlatformIO build from device_config.json.
@@ -75,9 +110,15 @@ constexpr unsigned long DEFAULT_TIME_SYNC_TIMEOUT_MS = {config["time_sync_timeou
 constexpr unsigned long DEFAULT_TRIGGER_WINDOW_MS = {config["trigger_window_ms"]}UL;
 constexpr uint32_t DEFAULT_MAX_ACCEPTED_IN_WINDOW = {config["max_accepted_in_window"]};
 constexpr unsigned long DEFAULT_LOCKOUT_MS = {config["lockout_ms"]}UL;
+constexpr int DEFAULT_RELAY_GPIO_PIN = {config.get("relay_gpio_pin", 12)};
 """
 
     HEADER_PATH.write_text(header_contents, encoding="utf-8")
 
 
-write_header(load_config())
+def main():
+    """Entry point used by PlatformIO's pre-build hook and direct test runs."""
+    write_header(load_config())
+
+
+main()
