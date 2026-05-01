@@ -9,7 +9,9 @@ try:
 except NameError:
     PROJECT_DIR = Path(__file__).resolve().parents[1]
 
-CONFIG_PATH = PROJECT_DIR / "device_config.json"
+CONFIG_DIR = PROJECT_DIR / "config"
+BOARD_ID_PATH = CONFIG_DIR / "board_id.txt"
+EXAMPLE_CONFIG_PATH = CONFIG_DIR / "device_config.example.json"
 HEADER_PATH = PROJECT_DIR / "include" / "settings.h"
 
 REQUIRED_KEYS = {
@@ -41,15 +43,37 @@ OPTIONAL_KEYS = {
 }
 
 
+def load_board_id():
+    """Read the branch-specific board id used to select the local config."""
+    if not BOARD_ID_PATH.exists():
+        raise RuntimeError("Missing config/board_id.txt for this firmware branch.")
+
+    board_id = BOARD_ID_PATH.read_text(encoding="utf-8").strip()
+    if not board_id or "/" in board_id or "\\" in board_id:
+        raise RuntimeError("config/board_id.txt must contain a single board id.")
+
+    return board_id
+
+
+def local_config_path(board_id):
+    """Return the ignored local config path for this board branch."""
+    return CONFIG_DIR / "local" / f"{board_id}.json"
+
+
 def load_config():
     """Load and validate the per-device JSON config used for header generation."""
-    if not CONFIG_PATH.exists():
+    board_id = load_board_id()
+    config_path = local_config_path(board_id)
+
+    if not config_path.exists():
         raise RuntimeError(
-            "Missing device_config.json. Copy device_config.example.json to "
-            "device_config.json and set the values for the board you are flashing."
+            f"Missing {config_path.relative_to(PROJECT_DIR)}. Copy "
+            f"{EXAMPLE_CONFIG_PATH.relative_to(PROJECT_DIR)} to "
+            f"{config_path.relative_to(PROJECT_DIR)} and set the values for "
+            "the board you are flashing."
         )
 
-    with CONFIG_PATH.open("r", encoding="utf-8") as config_file:
+    with config_path.open("r", encoding="utf-8") as config_file:
         config = json.load(config_file)
 
     for key, expected_type in REQUIRED_KEYS.items():
@@ -60,20 +84,24 @@ def load_config():
                 stale_note = (
                     " Found removed key(s): "
                     + ", ".join(stale_keys)
-                    + ". Refresh device_config.json from device_config.example.json."
+                    + f". Refresh {config_path.relative_to(PROJECT_DIR)} from "
+                    + f"{EXAMPLE_CONFIG_PATH.relative_to(PROJECT_DIR)}."
                 )
             raise RuntimeError(
-                f"device_config.json is missing required key: {key}.{stale_note}"
+                f"{config_path.relative_to(PROJECT_DIR)} is missing required "
+                f"key: {key}.{stale_note}"
             )
         if not isinstance(config[key], expected_type):
             raise RuntimeError(
-                f"device_config.json key {key} must be a {expected_type.__name__}"
+                f"{config_path.relative_to(PROJECT_DIR)} key {key} must be a "
+                f"{expected_type.__name__}"
             )
 
     for key, expected_type in OPTIONAL_KEYS.items():
         if key in config and not isinstance(config[key], expected_type):
             raise RuntimeError(
-                f"device_config.json key {key} must be a {expected_type.__name__}"
+                f"{config_path.relative_to(PROJECT_DIR)} key {key} must be a "
+                f"{expected_type.__name__}"
             )
 
     return config
@@ -93,8 +121,8 @@ def write_header(config):
     """Render the validated JSON config into the generated settings header."""
     header_contents = f"""#pragma once
 
-// This file is generated during the PlatformIO build from device_config.json.
-// Edit device_config.json when flashing a different board or deployment.
+// This file is generated during the PlatformIO build from config/local/<board_id>.json.
+// Edit that local config when flashing a different board or deployment.
 
 constexpr const char* DEVICE_GHAFEER_NAME = "{escape_cpp_string(config["device_ghafeer_name"])}";
 constexpr const char* MQTT_BROKER_HOST = "{escape_cpp_string(config["mqtt_broker_host"])}";

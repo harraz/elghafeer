@@ -9,3 +9,4 @@
 secrets.h
 settings.h
 device_config.json
+config/local/*.json

@@ -27,10 +27,13 @@ broker while still using QoS 0 publishes.
 
 **Configuration Layout**
 
-- [device_config.example.json](/home/harraz/projects/home_projects_new/elghafeer/device_config.example.json)
+- [config/device_config.example.json](/home/harraz/projects/home_projects_new/elghafeer/config/device_config.example.json)
   Template for the local JSON file used to generate `include/settings.h` at build time.
 
-- [device_config.json](/home/harraz/projects/home_projects_new/elghafeer/device_config.json)
+- [config/board_id.txt](/home/harraz/projects/home_projects_new/elghafeer/config/board_id.txt)
+  Branch-specific board id used to select the ignored local config file.
+
+- `config/local/esp12e_deepsleep.json`
   Local per-device deployment settings. This file is intentionally not tracked.
 
 - [include/settings.h](/home/harraz/projects/home_projects_new/elghafeer/include/settings.h)
@@ -40,7 +43,7 @@ broker while still using QoS 0 publishes.
   Wi-Fi credentials and other local secrets that should not be committed broadly.
 
 - [scripts/generate_settings_header.py](/home/harraz/projects/home_projects_new/elghafeer/scripts/generate_settings_header.py)
-  Build step that turns `device_config.json` into `include/settings.h`. It can also be run directly with `.venv/bin/python scripts/generate_settings_header.py` to validate local config changes before a full PlatformIO build.
+  Build step that turns `config/local/esp12e_deepsleep.json` into `include/settings.h`. It can also be run directly with `.venv/bin/python scripts/generate_settings_header.py` to validate local config changes before a full PlatformIO build.
 
 - [platformio.ini](/home/harraz/projects/home_projects_new/elghafeer/platformio.ini)
   PlatformIO environment settings plus build-time Git metadata injection.
@@ -59,10 +62,10 @@ firmware can be identified later without rebuilding it.
 
 **Build & Flash**
 
-1. Copy `device_config.example.json` to `device_config.json`.
+1. Copy `config/device_config.example.json` to `config/local/esp12e_deepsleep.json`.
 2. Edit the device name, broker host, timing values, relay GPIO, and relay behavior.
 3. Run `platformio run` or `platformio run -t upload`.
-4. The build generates `include/settings.h` from `device_config.json` automatically.
+4. The build generates `include/settings.h` from `config/local/esp12e_deepsleep.json` automatically.
 
 **Active Config Keys**
 
