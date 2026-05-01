@@ -8,7 +8,7 @@ An ESP8266 (Thing/ESP-01S) firmware that controls a PIR motion sensor and a rela
 - Relay on `RELAY_PIN` (GPIO0/D3)
 
 ## MQTT
-- Broker: set in `device_config.json`
+- Broker: set in `config/local/esp01_regular.json`
 - Topics (built from `GHAFEER_NAME` + MAC):
   - Status: `home/<GHAFEER_NAME>/<MAC>/status`
   - Motion: `home/<GHAFEER_NAME>/<MAC>/motion`
@@ -34,18 +34,18 @@ On motion, publishes JSON to `.../motion` and a status message indicating whethe
 ## Building & Uploading
 1) Ensure PlatformIO is installed (`platformio run`, `platformio run -t upload`).
 2) Wi-Fi credentials live in `src/secrets.h` (`WIFI_SSID`, `WIFI_PASSWORD`).
-3) Copy `device_config.example.json` to `device_config.json` and set the device name, broker host, broker port, and debug default for the board you are flashing.
-4) The build generates `include/settings.h` automatically from `device_config.json`.
+3) Copy `config/device_config.example.json` to `config/local/esp01_regular.json` and set the device name, broker host, broker port, and debug default for the board you are flashing.
+4) The build generates `include/settings.h` automatically from `config/local/esp01_regular.json`.
 5) Connect the ESP8266 (upload port is `/dev/ttyUSB0` by default in `platformio.ini`).
 
-The ESP-01 regular branch uses its own `device_config.json` shape. If you switch
-from a deep-sleep branch, copy this branch's `device_config.example.json` again
-before building.
+The ESP-01 regular branch uses `config/local/esp01_regular.json`, so switching
+to or from deep-sleep branches does not reuse the wrong ignored local config.
 
 ## Files of interest
 - `src/main.cpp` — setup, MQTT wiring, PIR/relay logic, auto-off timer.
 - `src/handlecmds.h` — command parsing, HELP payload, MQTT responses.
 - `src/globals.h` — shared globals, MQTT packet size, bounds for durations/intervals.
-- `device_config.example.json` — template for the local JSON config used during build.
-- `scripts/generate_settings_header.py` — generates `include/settings.h` from `device_config.json`.
+- `config/board_id.txt` — branch-specific id used to select the ignored local config.
+- `config/device_config.example.json` — template for the local JSON config used during build.
+- `scripts/generate_settings_header.py` — generates `include/settings.h` from `config/local/esp01_regular.json`.
 - `platformio.ini` — PlatformIO environment configuration.
