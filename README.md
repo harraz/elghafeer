@@ -6,6 +6,7 @@ An ESP8266 (Thing/ESP-01S) firmware that controls a PIR motion sensor and a rela
 - Board: ESP8266 (PlatformIO `env:thing`)
 - PIR sensor on `PIR_PIN` (RX/GPIO3 on ESP-01S)
 - Relay on `RELAY_PIN` (GPIO0/D3)
+- Serial debug uses TX/GPIO1 only, leaving RX/GPIO3 available for the PIR input.
 
 ## MQTT
 - Broker: set in `config/local/esp01_regular.json`
@@ -17,7 +18,7 @@ An ESP8266 (Thing/ESP-01S) firmware that controls a PIR motion sensor and a rela
 
 ### Commands (publish to `.../cmd`)
 - `REL_ON` / `REL_OFF` / `REL_STATUS`
-- `PIR_INTERVAL:<ms>` — set motion check interval (0..MAX_PIR_INTERVAL_MS)
+- `PIR_INTERVAL:<ms>` — set the minimum gap between accepted motion events (0..MAX_PIR_INTERVAL_MS)
 - `SKIP_LOCAL_RELAY:<true|false>` — bypass local relay when motion detected
 - `RELAY_MAX_ON_DURATION:<ms>` — auto-off window within the internal relay duration limits
 - `DEBUG:<true|false>`
@@ -27,7 +28,7 @@ An ESP8266 (Thing/ESP-01S) firmware that controls a PIR motion sensor and a rela
 - `HELP` — returns available commands (JSON array)
 
 ### Motion publishing
-On motion, publishes one JSON event to `.../motion`. The event includes whether the local relay was activated, respecting `SKIP_LOCAL_RELAY`. Relay auto-off is enforced via `RELAY_MAX_ON_DURATION`.
+Motion is detected on the PIR input's LOW-to-HIGH transition. On accepted motion, the device publishes one JSON event to `.../motion`. The event includes whether the local relay was activated, respecting `SKIP_LOCAL_RELAY`. Relay auto-off is enforced via `RELAY_MAX_ON_DURATION`.
 
 `RESTART` / `REBOOT` responses are briefly serviced through MQTT before the device restarts so the command acknowledgement is less likely to be lost.
 

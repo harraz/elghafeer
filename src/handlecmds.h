@@ -166,7 +166,7 @@ void handleCommand(String cmd) {
     addHelp(commands, "REL_ON", "Turn relay ON");
     addHelp(commands, "REL_OFF", "Turn relay OFF");
     addHelp(commands, "REL_STATUS", "Get relay status");
-    addHelp(commands, "PIR_INTERVAL:<ms>", "Set PIR sensing interval, 0..MAX_PIR_INTERVAL_MS");
+    addHelp(commands, "PIR_INTERVAL:<ms>", "Set minimum gap between accepted motion events, 0..MAX_PIR_INTERVAL_MS");
     addHelp(commands, "SKIP_LOCAL_RELAY:<true/false>", "Bypass local relay control");
     addHelp(commands, "DEBUG:<true/false>", "Enable/disable debug");
     addHelp(commands, "GHAFEER_NAME:<name>", "Set device name");
