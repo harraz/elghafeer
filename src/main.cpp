@@ -27,6 +27,7 @@ bool DEBUG = DEFAULT_DEBUG; // initial debug state comes from the local settings
 
 unsigned int lastMillis = 0;
 unsigned int relayActivatedMillis = 0;
+bool pirWasHigh = false;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -106,7 +107,7 @@ void reconnect() {
   }
 }
 
-void handlePIR() {
+void handleMotionDetected() {
   // When SKIP_LOCAL_RELAY is true we still want to report motion; only gate re-entry while relay is on.
   if (relayActivatedMillis != 0 && !SKIP_LOCAL_RELAY) {
     return;
@@ -190,11 +191,12 @@ void loop() {
 
   checkRelayTimeout();
 
-  if (now - lastMillis >= PIR_INTERVAL) {
-    bool motion = (digitalRead(PIR_PIN) == HIGH);
-    if (motion) {
-      lastMillis = now;
-      handlePIR();
-    }
+  bool pirIsHigh = (digitalRead(PIR_PIN) == HIGH);
+  bool motionStarted = pirIsHigh && !pirWasHigh;
+  pirWasHigh = pirIsHigh;
+
+  if (motionStarted && now - lastMillis >= PIR_INTERVAL) {
+    lastMillis = now;
+    handleMotionDetected();
   }
 }
