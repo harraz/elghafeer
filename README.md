@@ -28,7 +28,9 @@ An ESP8266 (Thing/ESP-01S) firmware that controls a PIR motion sensor and a rela
 - `HELP` — returns available commands (JSON array)
 
 ### Motion publishing
-Motion is detected on the PIR input's LOW-to-HIGH transition. On accepted motion, the device publishes one JSON event to `.../motion`. The event includes whether the local relay was activated, respecting `SKIP_LOCAL_RELAY`. Relay auto-off is enforced via `RELAY_MAX_ON_DURATION`.
+Motion is detected on the PIR input's LOW-to-HIGH transition. `PIR_INTERVAL` throttles accepted motion events. On accepted motion, the device publishes one JSON event to `.../motion` even if the relay is already on. The event includes relay state, throttle settings (`pir_interval`, `max_pir_interval_ms`), and firmware identity. Relay auto-off is enforced via `RELAY_MAX_ON_DURATION`.
+
+See [PIR Motion State Diagram](docs/motion_state.md) for the Mermaid state diagram of the PIR, relay, and publish flow.
 
 `RESTART` / `REBOOT` responses are briefly serviced through MQTT before the device restarts so the command acknowledgement is less likely to be lost.
 
@@ -48,5 +50,6 @@ to or from deep-sleep branches does not reuse the wrong ignored local config.
 - `src/globals.h` — shared globals, MQTT packet size, bounds for durations/intervals.
 - `config/board_id.txt` — branch-specific id used to select the ignored local config.
 - `config/device_config.example.json` — template for the local JSON config used during build.
+- [docs/motion_state.md](docs/motion_state.md) — Mermaid state diagram for PIR motion handling.
 - `scripts/generate_settings_header.py` — generates `include/settings.h` from `config/local/esp01_regular.json`.
 - `platformio.ini` — PlatformIO environment configuration.

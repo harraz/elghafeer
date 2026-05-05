@@ -108,18 +108,16 @@ void reconnect() {
 }
 
 void handleMotionDetected() {
-  // When SKIP_LOCAL_RELAY is true we still want to report motion; only gate re-entry while relay is on.
-  if (relayActivatedMillis != 0 && !SKIP_LOCAL_RELAY) {
-    return;
-  }
-
   bool localRelayActivated = false;
+  bool relayAlreadyActive = (relayActivatedMillis != 0 && digitalRead(RELAY_PIN) == HIGH);
 
-  if (!SKIP_LOCAL_RELAY) {
+  if (!SKIP_LOCAL_RELAY && !relayAlreadyActive) {
     relayActivatedMillis = millis();
     digitalWrite(RELAY_PIN, HIGH);
     localRelayActivated = true;
     debugPrint("Motion ON, relay ON (local control)");
+  } else if (relayAlreadyActive) {
+    debugPrint("Motion detected, relay already ON");
   } else {
     debugPrint("Motion detected, SKIP_LOCAL_RELAY enabled (no local relay)");
   }
@@ -131,7 +129,10 @@ void handleMotionDetected() {
   doc["ip"] = WiFi.localIP().toString();
   doc["time"] = millis();
   doc["local_relay_activated"] = localRelayActivated;
+  doc["relay_already_active"] = relayAlreadyActive;
   doc["skip_local_relay"] = SKIP_LOCAL_RELAY;
+  doc["pir_interval"] = PIR_INTERVAL;
+  doc["max_pir_interval_ms"] = MAX_PIR_INTERVAL_MS;
   doc["fw_branch"] = FW_GIT_BRANCH;
   doc["fw_sha"] = FW_GIT_SHA;
 
