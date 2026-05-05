@@ -13,7 +13,7 @@ const char* FW_GIT_SHA = BUILD_GIT_SHA;
 
 String GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 
-const int PIR_PIN    = 2;  // D4
+const int PIR_PIN    = 3;  // RX/GPIO3 on ESP-01S
 const int RELAY_PIN  = 0;  // D3
 
 // These are per-device startup defaults loaded from the generated settings
@@ -64,7 +64,6 @@ bool publishStatusAndFlush(const String &msg, unsigned long flushMs) {
 
 void setup_wifi() {
   delay(10);
-  Serial.begin(115200);
   debugPrint("Connecting to Wi-Fi…");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
@@ -113,14 +112,15 @@ void handlePIR() {
     return;
   }
 
+  bool localRelayActivated = false;
+
   if (!SKIP_LOCAL_RELAY) {
     relayActivatedMillis = millis();
     digitalWrite(RELAY_PIN, HIGH);
+    localRelayActivated = true;
     debugPrint("Motion ON, relay ON (local control)");
-    client.publish(statusTopic.c_str(), "Motion detected, relay activated");
   } else {
     debugPrint("Motion detected, SKIP_LOCAL_RELAY enabled (no local relay)");
-    client.publish(statusTopic.c_str(), "Motion detected, SKIP_LOCAL_RELAY enabled (no local relay)");
   }
 
   // Publish motion detection as JSON
@@ -128,6 +128,8 @@ void handlePIR() {
     "\",\"location\":\"" + String(GHAFEER_NAME) +
     "\",\"ip\":\"" + WiFi.localIP().toString() +
     "\",\"time\":" + String(millis()) +
+    ",\"local_relay_activated\":" + String(localRelayActivated ? "true" : "false") +
+    ",\"skip_local_relay\":" + String(SKIP_LOCAL_RELAY ? "true" : "false") +
     ",\"fw_branch\":\"" + String(FW_GIT_BRANCH) +
     "\",\"fw_sha\":\"" + String(FW_GIT_SHA) + "\"}";
   client.publish(motionTopic.c_str(), payload.c_str());
@@ -145,26 +147,27 @@ void checkRelayTimeout() {
     if (millis() - relayActivatedMillis >= RELAY_MAX_ON_DURATION) {
       digitalWrite(RELAY_PIN, LOW);
       relayActivatedMillis = 0;
-      client.publish(statusTopic.c_str(), "Relay_OFF (timer expired)");
+      publishStatusAndFlush("Relay_OFF (timer expired)", 50);
       debugPrint("Relay OFF (timer expired)");
     }
   }
 }
 
 void setup() {
-  pinMode(PIR_PIN,   INPUT);
+  // Keep serial debug output on TX/GPIO1 without claiming RX/GPIO3.
+  Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);
+
   pinMode(RELAY_PIN, OUTPUT);
 
   digitalWrite(RELAY_PIN, HIGH);
   initialized = true;
-
-  // set baud rate for serial communication
-  Serial.begin(115200);
   
   debugPrint("Starting setup...");
 
   setup_wifi();
   buildTopics();
+
+  pinMode(PIR_PIN, INPUT);
 
   client.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
   client.setBufferSize(2048); // ensure MQTT can carry HELP payload

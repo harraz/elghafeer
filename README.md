@@ -4,7 +4,7 @@ An ESP8266 (Thing/ESP-01S) firmware that controls a PIR motion sensor and a rela
 
 ## Hardware
 - Board: ESP8266 (PlatformIO `env:thing`)
-- PIR sensor on `PIR_PIN` (GPIO2/D4)
+- PIR sensor on `PIR_PIN` (RX/GPIO3 on ESP-01S)
 - Relay on `RELAY_PIN` (GPIO0/D3)
 
 ## MQTT
@@ -27,7 +27,7 @@ An ESP8266 (Thing/ESP-01S) firmware that controls a PIR motion sensor and a rela
 - `HELP` — returns available commands (JSON array)
 
 ### Motion publishing
-On motion, publishes JSON to `.../motion` and a status message indicating whether the relay was toggled (respecting `SKIP_LOCAL_RELAY`). Relay auto-off is enforced via `RELAY_MAX_ON_DURATION`.
+On motion, publishes one JSON event to `.../motion`. The event includes whether the local relay was activated, respecting `SKIP_LOCAL_RELAY`. Relay auto-off is enforced via `RELAY_MAX_ON_DURATION`.
 
 `RESTART` / `REBOOT` responses are briefly serviced through MQTT before the device restarts so the command acknowledgement is less likely to be lost.
 
