@@ -123,15 +123,19 @@ void handlePIR() {
     debugPrint("Motion detected, SKIP_LOCAL_RELAY enabled (no local relay)");
   }
 
-  // Publish motion detection as JSON
-  String payload = "{\"motion\":true,\"mac\":\"" + mac +
-    "\",\"location\":\"" + String(GHAFEER_NAME) +
-    "\",\"ip\":\"" + WiFi.localIP().toString() +
-    "\",\"time\":" + String(millis()) +
-    ",\"local_relay_activated\":" + String(localRelayActivated ? "true" : "false") +
-    ",\"skip_local_relay\":" + String(SKIP_LOCAL_RELAY ? "true" : "false") +
-    ",\"fw_branch\":\"" + String(FW_GIT_BRANCH) +
-    "\",\"fw_sha\":\"" + String(FW_GIT_SHA) + "\"}";
+  JsonDocument doc;
+  doc["motion"] = true;
+  doc["mac"] = mac;
+  doc["location"] = GHAFEER_NAME;
+  doc["ip"] = WiFi.localIP().toString();
+  doc["time"] = millis();
+  doc["local_relay_activated"] = localRelayActivated;
+  doc["skip_local_relay"] = SKIP_LOCAL_RELAY;
+  doc["fw_branch"] = FW_GIT_BRANCH;
+  doc["fw_sha"] = FW_GIT_SHA;
+
+  String payload;
+  serializeJson(doc, payload);
   client.publish(motionTopic.c_str(), payload.c_str());
 }
 
