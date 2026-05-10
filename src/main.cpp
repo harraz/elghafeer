@@ -362,8 +362,6 @@ void setup() {
     }
     if (client.connected()) {
       mqttConnected = true;
-      String wifiMsg = "WiFi connected SSID:" + activeWifiSsid + " IP:" + WiFi.localIP().toString();
-      client.publish(statusTopic.c_str(), wifiMsg.c_str());
       tracePrint("TRACE: mqtt_connected");
     } else {
       debugPrint("MQTT connect timeout, continuing offline");
@@ -490,6 +488,8 @@ void setup() {
     client.publish(motionTopic.c_str(), payload.c_str());
     publishStatusStep("Motion event published");
     tracePrint("TRACE: motion_published");
+    String wifiMsg = "WiFi connected SSID:" + activeWifiSsid + " IP:" + WiFi.localIP().toString();
+    client.publish(statusTopic.c_str(), wifiMsg.c_str());
   }
 
   // Relay ON from local motion trigger unless the device config disables
