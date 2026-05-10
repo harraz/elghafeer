@@ -20,6 +20,8 @@ extern const char* FW_GIT_SHA;
 extern String GHAFEER_NAME;
 extern String mac;
 extern String statusTopic;
+extern String activeWifiSsid;
+extern bool wifiConnected;
 
 extern unsigned int relayActivatedMillis;
 

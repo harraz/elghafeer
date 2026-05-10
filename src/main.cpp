@@ -15,6 +15,9 @@ String GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 
 const int PIR_PIN    = 3;  // RX/GPIO3 on ESP-01S
 const int RELAY_PIN  = 0;  // D3
+constexpr unsigned long WIFI_CONNECT_TIMEOUT_PER_NETWORK_MS = 5000UL;
+constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 30000UL;
+constexpr unsigned long MQTT_RETRY_INTERVAL_MS = 5000UL;
 
 // These are per-device startup defaults loaded from the generated settings
 // header. MQTT commands may change them later while the device is running.
@@ -36,6 +39,20 @@ String mac;           // No colons, uppercase
 String statusTopic;
 String motionTopic;
 String cmdTopic;
+String activeWifiSsid = "";
+String pendingWifiSsid = "";
+bool wifiConnected = false;
+unsigned long wifiAttemptStartedAt = 0;
+unsigned long lastWifiCycleFinishedAt = 0;
+unsigned long lastMqttReconnectAttemptMs = 0;
+size_t wifiNetworkIndex = 0;
+
+enum WifiConnectState {
+  WIFI_IDLE,
+  WIFI_CONNECTING
+};
+
+WifiConnectState wifiConnectState = WIFI_IDLE;
 
 bool initialized;  // thiis is to set the relay to low only once at startup
 
@@ -63,16 +80,64 @@ bool publishStatusAndFlush(const String &msg, unsigned long flushMs) {
   return queued;
 }
 
-void setup_wifi() {
-  delay(10);
-  debugPrint("Connecting to Wi-Fi…");
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+void startWifiAttempt(size_t networkIndex) {
+  WiFi.mode(WIFI_STA);
+  wifiNetworkIndex = networkIndex;
+  pendingWifiSsid = WIFI_NETWORKS[wifiNetworkIndex].ssid;
+  wifiAttemptStartedAt = millis();
+  wifiConnectState = WIFI_CONNECTING;
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    debugPrint("…still connecting");
+  debugPrint("Connecting to Wi-Fi: " + pendingWifiSsid);
+  WiFi.begin(WIFI_NETWORKS[wifiNetworkIndex].ssid, WIFI_NETWORKS[wifiNetworkIndex].password);
+}
+
+void startWifiCycle() {
+  wifiConnected = false;
+  activeWifiSsid = "";
+  pendingWifiSsid = "";
+  startWifiAttempt(0);
+}
+
+void maintainWifi() {
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!wifiConnected) {
+      activeWifiSsid = WiFi.SSID();
+      wifiConnected = true;
+      debugPrint("Wi-Fi connected to " + activeWifiSsid + ". IP: " + WiFi.localIP().toString());
+    }
+    wifiConnectState = WIFI_IDLE;
+    return;
   }
-  debugPrint("Wi-Fi connected. IP: " + WiFi.localIP().toString());
+
+  if (wifiConnected) {
+    debugPrint("Wi-Fi disconnected from " + activeWifiSsid);
+    wifiConnected = false;
+    activeWifiSsid = "";
+    client.disconnect();
+    lastWifiCycleFinishedAt = millis();
+  }
+
+  if (wifiConnectState == WIFI_CONNECTING) {
+    if (millis() - wifiAttemptStartedAt < WIFI_CONNECT_TIMEOUT_PER_NETWORK_MS) {
+      return;
+    }
+
+    debugPrint("Wi-Fi timeout: " + pendingWifiSsid);
+    WiFi.disconnect();
+    if (wifiNetworkIndex + 1 < WIFI_NETWORK_COUNT) {
+      startWifiAttempt(wifiNetworkIndex + 1);
+    } else {
+      wifiConnectState = WIFI_IDLE;
+      pendingWifiSsid = "";
+      lastWifiCycleFinishedAt = millis();
+      debugPrint("Wi-Fi unavailable, continuing offline");
+    }
+    return;
+  }
+
+  if (millis() - lastWifiCycleFinishedAt >= WIFI_RETRY_INTERVAL_MS) {
+    startWifiCycle();
+  }
 }
 
 void buildTopics() {
@@ -93,17 +158,39 @@ void callback(char* topic, byte* payload, unsigned int length) {
   handleCommand(cmd);
 }
 
-void reconnect() {
-  while (!client.connected()) {
-    debugPrint("Connecting to MQTT…");
-    if (client.connect(mac.c_str())) {
-      client.subscribe(cmdTopic.c_str());
-      debugPrint("MQTT connected, subscribed to: " + cmdTopic);
-      client.publish(statusTopic.c_str(), "Device_Online", true); // retained
-    } else {
-      debugPrint("MQTT connect failed, rc=" + String(client.state()));
-      delay(2000);
-    }
+bool reconnect() {
+  if (!wifiConnected || WiFi.status() != WL_CONNECTED) {
+    return false;
+  }
+
+  debugPrint("Connecting to MQTT...");
+  if (client.connect(mac.c_str())) {
+    client.subscribe(cmdTopic.c_str());
+    debugPrint("MQTT connected, subscribed to: " + cmdTopic);
+    String onlineMsg = "Device_Online via WiFi:" + activeWifiSsid + " IP:" + WiFi.localIP().toString();
+    client.publish(statusTopic.c_str(), onlineMsg.c_str(), true); // retained
+    String wifiMsg = "WiFi connected SSID:" + activeWifiSsid + " IP:" + WiFi.localIP().toString();
+    client.publish(statusTopic.c_str(), wifiMsg.c_str());
+    return true;
+  }
+
+  debugPrint("MQTT connect failed, rc=" + String(client.state()));
+  return false;
+}
+
+void maintainMqtt() {
+  if (!wifiConnected || WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  if (client.connected()) {
+    client.loop();
+    return;
+  }
+
+  if (millis() - lastMqttReconnectAttemptMs >= MQTT_RETRY_INTERVAL_MS) {
+    lastMqttReconnectAttemptMs = millis();
+    reconnect();
   }
 }
 
@@ -127,6 +214,8 @@ void handleMotionDetected() {
   doc["mac"] = mac;
   doc["location"] = GHAFEER_NAME;
   doc["ip"] = WiFi.localIP().toString();
+  doc["wifi_connected"] = wifiConnected;
+  doc["wifi_ssid"] = activeWifiSsid;
   doc["time"] = millis();
   doc["local_relay_activated"] = localRelayActivated;
   doc["relay_already_active"] = relayAlreadyActive;
@@ -138,7 +227,9 @@ void handleMotionDetected() {
 
   String payload;
   serializeJson(doc, payload);
-  client.publish(motionTopic.c_str(), payload.c_str());
+  if (client.connected()) {
+    client.publish(motionTopic.c_str(), payload.c_str());
+  }
 }
 
 void checkRelayTimeout() {
@@ -153,7 +244,9 @@ void checkRelayTimeout() {
     if (millis() - relayActivatedMillis >= RELAY_MAX_ON_DURATION) {
       digitalWrite(RELAY_PIN, LOW);
       relayActivatedMillis = 0;
-      publishStatusAndFlush("Relay_OFF (timer expired)", 50);
+      if (client.connected()) {
+        publishStatusAndFlush("Relay_OFF (timer expired)", 50);
+      }
       debugPrint("Relay OFF (timer expired)");
     }
   }
@@ -170,7 +263,7 @@ void setup() {
   
   debugPrint("Starting setup...");
 
-  setup_wifi();
+  WiFi.mode(WIFI_STA);
   buildTopics();
 
   pinMode(PIR_PIN, INPUT);
@@ -178,16 +271,12 @@ void setup() {
   client.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
   client.setBufferSize(2048); // ensure MQTT can carry HELP payload
   client.setCallback(callback);
+  startWifiCycle();
 
   debugPrint("Setup complete");
 }
 
 void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop();
-
   unsigned long now = millis();
 
   checkRelayTimeout();
@@ -200,4 +289,7 @@ void loop() {
     lastMillis = now;
     handleMotionDetected();
   }
+
+  maintainWifi();
+  maintainMqtt();
 }

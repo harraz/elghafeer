@@ -10,6 +10,8 @@
 // Forward declarations
 extern PubSubClient client;
 extern String statusTopic;
+extern String activeWifiSsid;
+extern bool wifiConnected;
 bool publishStatusAndFlush(const String &msg, unsigned long flushMs = 200);
 
 // Function declarations
@@ -148,6 +150,8 @@ void handleCommand(String cmd) {
     doc["name"] = GHAFEER_NAME;
     doc["mac"] = mac;
     doc["ip"] = WiFi.localIP().toString();
+    doc["wifi_connected"] = wifiConnected;
+    doc["wifi_ssid"] = activeWifiSsid;
     doc["relay"] = digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF";
     doc["skip_local_relay"] = SKIP_LOCAL_RELAY;
     doc["pir_interval"] = PIR_INTERVAL;
@@ -181,7 +185,9 @@ void handleCommand(String cmd) {
   }
 
   serializeJson(doc, response);
-  client.publish(statusTopic.c_str(), response.c_str());
+  if (client.connected()) {
+    client.publish(statusTopic.c_str(), response.c_str());
+  }
 }
 
 void addHelp(JsonArray arr, const char* cmd, const char* desc) {
