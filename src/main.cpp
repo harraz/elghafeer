@@ -56,6 +56,8 @@ Preferences preferences;
 String mac;
 String statusTopic;
 String motionTopic;
+String activeWifiSsid = "";
+bool wifiConnected = false;
 
 // This struct is the small block of data we store in NVS-backed Preferences
 // so the saved values survive resets and full power loss.
@@ -242,26 +244,47 @@ void publishFirmwareIdentity() {
   debugPrint(versionMsg);
 }
 
-// Connect to Wi-Fi, but stop trying once the Wi-Fi timeout expires.
+unsigned long wifiTimeoutPerNetworkMs() {
+  unsigned long timeout = WIFI_CONNECT_TIMEOUT_MS / WIFI_NETWORK_COUNT;
+  return timeout < 1000UL ? 1000UL : timeout;
+}
+
+// Connect to one of the configured Wi-Fi networks, but keep the overall
+// attempt bounded so local relay behavior can still run offline.
 bool setup_wifi() {
   tracePrint("TRACE: wifi_connect_start");
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  unsigned long wifiStartedAt = millis();
-  while (WiFi.status() != WL_CONNECTED &&
-         (millis() - wifiStartedAt < WIFI_CONNECT_TIMEOUT_MS)) {
-    // Yield between connection attempts so the ESP32-C3 Wi-Fi stack can progress.
-    delay(500);
-    debugPrint("Connecting...");
+  unsigned long perNetworkTimeoutMs = wifiTimeoutPerNetworkMs();
+
+  for (size_t i = 0; i < WIFI_NETWORK_COUNT; ++i) {
+    debugPrint("Connecting to Wi-Fi: " + String(WIFI_NETWORKS[i].ssid));
+    WiFi.begin(WIFI_NETWORKS[i].ssid, WIFI_NETWORKS[i].password);
+    unsigned long wifiStartedAt = millis();
+
+    while (WiFi.status() != WL_CONNECTED &&
+           (millis() - wifiStartedAt < perNetworkTimeoutMs)) {
+      // Yield between connection attempts so the ESP32-C3 Wi-Fi stack can progress.
+      delay(250);
+      debugPrint("Connecting...");
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiConnected = true;
+      activeWifiSsid = WIFI_NETWORKS[i].ssid;
+      debugPrint("Wi-Fi connected to " + activeWifiSsid + ": " + WiFi.localIP().toString());
+      tracePrint("TRACE: wifi_connected ssid=" + activeWifiSsid + " ip=" + WiFi.localIP().toString());
+      return true;
+    }
+
+    WiFi.disconnect(true, true);
+    delay(100);
   }
-  if (WiFi.status() != WL_CONNECTED) {
-    debugPrint("Wi-Fi connect timeout");
-    tracePrint("TRACE: wifi_connect_timeout");
-    return false;
-  }
-  debugPrint("Wi-Fi connected: " + WiFi.localIP().toString());
-  tracePrint("TRACE: wifi_connected ip=" + WiFi.localIP().toString());
-  return true;
+
+  wifiConnected = false;
+  activeWifiSsid = "";
+  debugPrint("Wi-Fi unavailable, continuing offline");
+  tracePrint("TRACE: wifi_unavailable");
+  return false;
 }
 
 void buildTopics() {
@@ -323,29 +346,33 @@ void setup() {
   debugPrint("Booting after motion...");
   tracePrint("TRACE: boot");
 
-  if (!setup_wifi()) {
-    goToSleep(false);
-  }
+  setup_wifi();
   buildTopics();
 
-  client.setServer(MQTT_SERVER, MQTT_PORT);
+  bool mqttConnected = false;
+  if (wifiConnected) {
+    client.setServer(MQTT_SERVER, MQTT_PORT);
 
-  unsigned long mqttStartedAt = millis();
-  while (!client.connected() &&
-         (millis() - mqttStartedAt < MQTT_CONNECT_TIMEOUT_MS)) {
-    client.connect(mac.c_str());
-    // Avoid hammering MQTT reconnects back-to-back while the socket handshake completes.
-    delay(500);
+    unsigned long mqttStartedAt = millis();
+    while (!client.connected() &&
+           (millis() - mqttStartedAt < MQTT_CONNECT_TIMEOUT_MS)) {
+      client.connect(mac.c_str());
+      // Avoid hammering MQTT reconnects back-to-back while the socket handshake completes.
+      delay(500);
+    }
+    if (client.connected()) {
+      mqttConnected = true;
+      String wifiMsg = "WiFi connected SSID:" + activeWifiSsid + " IP:" + WiFi.localIP().toString();
+      client.publish(statusTopic.c_str(), wifiMsg.c_str());
+      tracePrint("TRACE: mqtt_connected");
+    } else {
+      debugPrint("MQTT connect timeout, continuing offline");
+      tracePrint("TRACE: mqtt_connect_timeout");
+    }
   }
-  if (!client.connected()) {
-    debugPrint("MQTT connect timeout, sleeping");
-    tracePrint("TRACE: mqtt_connect_timeout");
-    goToSleep(false);
-  }
-  tracePrint("TRACE: mqtt_connected");
 
   publishFirmwareIdentity();
-  publishStatusStep("Boot complete: WiFi and MQTT connected");
+  publishStatusStep(mqttConnected ? "Boot complete: WiFi and MQTT connected" : "Boot continuing without MQTT");
 
   PersistedThrottleState persistedState;
   uint32_t suppressedWakeCount = 0;
@@ -357,11 +384,13 @@ void setup() {
     publishStatusStep("Persisted state missing; starting fresh");
   }
 
-  if (!syncTime()) {
+  if (!wifiConnected || !syncTime()) {
     // Keep this status reliable because without NTP we skip the limiter and
     // continue as an accepted wake.
-    publishStatusAndFlush("Time sync failed; skipping throttle");
-    publishStatusStep("Time sync failed; skipping throttle");
+    if (client.connected()) {
+      publishStatusAndFlush(wifiConnected ? "Time sync failed; skipping throttle" : "WiFi unavailable; skipping throttle");
+      publishStatusStep("Time sync failed; skipping throttle");
+    }
     tracePrint("TRACE: time_sync_failed");
   } else {
     time_t nowEpoch = time(nullptr);
@@ -413,6 +442,8 @@ void setup() {
   doc["mac"] = mac;
   doc["location"] = GHAFEER_NAME;
   doc["ip"] = WiFi.localIP().toString();
+  doc["wifi_connected"] = wifiConnected;
+  doc["wifi_ssid"] = activeWifiSsid;
   doc["relay_duration_ms"] = currentRelayOnDurationMs;
   doc["post_trigger_awake_window_ms"] = POST_TRIGGER_AWAKE_WINDOW_MS;
   doc["fw_branch"] = FW_GIT_BRANCH;
@@ -455,9 +486,11 @@ void setup() {
   }
 
   publishStatusStep("Relay duration ms:" + String(currentRelayOnDurationMs));
-  client.publish(motionTopic.c_str(), payload.c_str());
-  publishStatusStep("Motion event published");
-  tracePrint("TRACE: motion_published");
+  if (client.connected()) {
+    client.publish(motionTopic.c_str(), payload.c_str());
+    publishStatusStep("Motion event published");
+    tracePrint("TRACE: motion_published");
+  }
 
   // Relay ON from local motion trigger unless the device config disables
   // local relay actuation for this board.
@@ -465,23 +498,31 @@ void setup() {
     digitalWrite(RELAY_PIN, HIGH);
     relayOn = true;
     lastRelayOnMs = millis();
-    client.publish(statusTopic.c_str(), "Relay ON (local motion trigger)");
+    if (client.connected()) {
+      client.publish(statusTopic.c_str(), "Relay ON (local motion trigger)");
+    }
   } else {
-    client.publish(statusTopic.c_str(), "Local relay skipped by config");
+    if (client.connected()) {
+      client.publish(statusTopic.c_str(), "Local relay skipped by config");
+    }
   }
 
   // Stay awake for the configured post-trigger window so the relay can finish
   // its randomized ON duration before the ESP goes back to sleep.
   unsigned long awakeLoopStartedAt = millis();
   while (millis() - awakeLoopStartedAt < POST_TRIGGER_AWAKE_WINDOW_MS) {
-    client.loop();
+    if (client.connected()) {
+      client.loop();
+    }
 
     // Turn relay OFF when duration elapsed
     if (relayOn && millis() - lastRelayOnMs >= currentRelayOnDurationMs) {
       digitalWrite(RELAY_PIN, LOW);
       relayOn = false;
-      client.publish(statusTopic.c_str(), "Relay OFF (timer expired)");
-      publishStatusStep("Relay timer expired");
+      if (client.connected()) {
+        client.publish(statusTopic.c_str(), "Relay OFF (timer expired)");
+        publishStatusStep("Relay timer expired");
+      }
       tracePrint("TRACE: relay_off");
     }
     // Keep MQTT alive without spinning this post-trigger loop unnecessarily fast.
