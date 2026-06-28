@@ -72,35 +72,6 @@ void handleCommand(String cmd) {
     doc["status"] = "ok";
     doc["relay_status"] = digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF";
   }
-  else if (cmd.startsWith("PIR_INTERVAL:")) {
-    String value;
-    if (!extractValue(cmd, "PIR_INTERVAL:", value)) {
-      doc["status"] = "error";
-      doc["message"] = "Missing PIR_INTERVAL value";
-    } else {
-      long temp = PIR_INTERVAL;
-      if (!parseInt(value, temp, 0L, (long)MAX_PIR_INTERVAL_MS)) {
-        doc["status"] = "error";
-        doc["message"] = "Invalid PIR_INTERVAL value";
-      } else {
-        PIR_INTERVAL = temp;
-        doc["status"] = "ok";
-        doc["PIR_INTERVAL"] = PIR_INTERVAL;
-      }
-    }
-  }
-  else if (cmd.startsWith("SKIP_LOCAL_RELAY:")) {
-    String value;
-    bool parsedValue;
-    if (extractValue(cmd, "SKIP_LOCAL_RELAY:", value) && parseBool(value, parsedValue)) {
-      SKIP_LOCAL_RELAY = parsedValue;
-      doc["status"] = "ok";
-      doc["SKIP_LOCAL_RELAY"] = SKIP_LOCAL_RELAY;
-    } else {
-      doc["status"] = "error";
-      doc["message"] = "Invalid SKIP_LOCAL_RELAY value";
-    }
-  }
   else if (cmd.startsWith("RELAY_MAX_ON_DURATION:")) {
     String value;
     long temp = RELAY_MAX_ON_DURATION;
@@ -153,9 +124,6 @@ void handleCommand(String cmd) {
     doc["wifi_connected"] = wifiConnected;
     doc["wifi_ssid"] = activeWifiSsid;
     doc["relay"] = digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF";
-    doc["skip_local_relay"] = SKIP_LOCAL_RELAY;
-    doc["pir_interval"] = PIR_INTERVAL;
-    doc["max_pir_interval_ms"] = MAX_PIR_INTERVAL_MS;
     doc["relay_max_on_duration"] = RELAY_MAX_ON_DURATION;
     doc["relay_on_duration_min_limit_ms"] = RELAY_ON_DURATION_MIN_LIMIT_MS;
     doc["relay_on_duration_max_limit_ms"] = RELAY_ON_DURATION_MAX_LIMIT_MS;
@@ -170,8 +138,6 @@ void handleCommand(String cmd) {
     addHelp(commands, "REL_ON", "Turn relay ON");
     addHelp(commands, "REL_OFF", "Turn relay OFF");
     addHelp(commands, "REL_STATUS", "Get relay status");
-    addHelp(commands, "PIR_INTERVAL:<ms>", "Set minimum gap between accepted motion events, 0..MAX_PIR_INTERVAL_MS");
-    addHelp(commands, "SKIP_LOCAL_RELAY:<true/false>", "Bypass local relay control");
     addHelp(commands, "DEBUG:<true/false>", "Enable/disable debug");
     addHelp(commands, "GHAFEER_NAME:<name>", "Set device name");
     addHelp(commands, "STATUS", "Get full device status");

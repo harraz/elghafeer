@@ -22,10 +22,7 @@ REQUIRED_KEYS = {
     "mqtt_broker_host": str,
     "mqtt_broker_port": int,
     "default_debug": bool,
-    "default_pir_interval_ms": int,
     "default_relay_max_on_duration_ms": int,
-    "default_max_pir_interval_ms": int,
-    "default_skip_local_relay": bool,
 }
 
 
@@ -97,10 +94,7 @@ constexpr const char* DEVICE_GHAFEER_NAME = "{escape_cpp_string(config["device_g
 constexpr const char* MQTT_BROKER_HOST = "{escape_cpp_string(config["mqtt_broker_host"])}";
 constexpr int MQTT_BROKER_PORT = {config["mqtt_broker_port"]};
 constexpr bool DEFAULT_DEBUG = {cpp_bool(config["default_debug"])};
-constexpr unsigned int DEFAULT_PIR_INTERVAL_MS = {config["default_pir_interval_ms"]};
 constexpr unsigned int DEFAULT_RELAY_MAX_ON_DURATION_MS = {config["default_relay_max_on_duration_ms"]};
-constexpr unsigned int DEFAULT_MAX_PIR_INTERVAL_MS = {config["default_max_pir_interval_ms"]};
-constexpr bool DEFAULT_SKIP_LOCAL_RELAY = {cpp_bool(config["default_skip_local_relay"])};
 """
 
     HEADER_PATH.write_text(header_contents, encoding="utf-8")

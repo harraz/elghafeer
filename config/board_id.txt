@@ -1,1 +1,1 @@
-esp01_regular
+esp01_builtin_relay

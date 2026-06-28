@@ -6,14 +6,12 @@
 #include <ArduinoJson.h>
 
 // These values are injected by PlatformIO at build time from the current Git
-// branch and commit so the published motion payload can identify the exact
-// firmware build that produced it.
+// branch and commit so status/debug output can identify the exact firmware build.
 const char* FW_GIT_BRANCH = BUILD_GIT_BRANCH;
 const char* FW_GIT_SHA = BUILD_GIT_SHA;
 
 String GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 
-const int PIR_PIN    = 3;  // RX/GPIO3 on ESP-01S
 const int RELAY_PIN  = 0;  // D3
 constexpr unsigned long WIFI_CONNECT_TIMEOUT_PER_NETWORK_MS = 5000UL;
 constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 30000UL;
@@ -21,23 +19,17 @@ constexpr unsigned long MQTT_RETRY_INTERVAL_MS = 5000UL;
 
 // These are per-device startup defaults loaded from the generated settings
 // header. MQTT commands may change them later while the device is running.
-unsigned int PIR_INTERVAL = DEFAULT_PIR_INTERVAL_MS;
 unsigned int RELAY_MAX_ON_DURATION = DEFAULT_RELAY_MAX_ON_DURATION_MS;
-unsigned int MAX_PIR_INTERVAL_MS = DEFAULT_MAX_PIR_INTERVAL_MS;
-bool SKIP_LOCAL_RELAY = DEFAULT_SKIP_LOCAL_RELAY;
 
 bool DEBUG = DEFAULT_DEBUG; // initial debug state comes from the local settings file
 
-unsigned int lastMillis = 0;
 unsigned int relayActivatedMillis = 0;
-bool pirWasHigh = false;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
 String mac;           // No colons, uppercase
 String statusTopic;
-String motionTopic;
 String cmdTopic;
 String activeWifiSsid = "";
 String pendingWifiSsid = "";
@@ -145,7 +137,6 @@ void buildTopics() {
   mac.replace(":", "");
   mac.toUpperCase();
   statusTopic = "home/" + String(GHAFEER_NAME) + "/" + mac + "/status";
-  motionTopic = "home/" + String(GHAFEER_NAME) + "/" + mac + "/motion";
   cmdTopic    = "home/" + String(GHAFEER_NAME) + "/" + mac + "/cmd";
 }
 
@@ -194,44 +185,6 @@ void maintainMqtt() {
   }
 }
 
-void handleMotionDetected() {
-  bool localRelayActivated = false;
-  bool relayAlreadyActive = (relayActivatedMillis != 0 && digitalRead(RELAY_PIN) == HIGH);
-
-  if (!SKIP_LOCAL_RELAY && !relayAlreadyActive) {
-    relayActivatedMillis = millis();
-    digitalWrite(RELAY_PIN, HIGH);
-    localRelayActivated = true;
-    debugPrint("Motion ON, relay ON (local control)");
-  } else if (relayAlreadyActive) {
-    debugPrint("Motion detected, relay already ON");
-  } else {
-    debugPrint("Motion detected, SKIP_LOCAL_RELAY enabled (no local relay)");
-  }
-
-  JsonDocument doc;
-  doc["motion"] = true;
-  doc["mac"] = mac;
-  doc["location"] = GHAFEER_NAME;
-  doc["ip"] = WiFi.localIP().toString();
-  doc["wifi_connected"] = wifiConnected;
-  doc["wifi_ssid"] = activeWifiSsid;
-  doc["time"] = millis();
-  doc["local_relay_activated"] = localRelayActivated;
-  doc["relay_already_active"] = relayAlreadyActive;
-  doc["skip_local_relay"] = SKIP_LOCAL_RELAY;
-  doc["pir_interval"] = PIR_INTERVAL;
-  doc["max_pir_interval_ms"] = MAX_PIR_INTERVAL_MS;
-  doc["fw_branch"] = FW_GIT_BRANCH;
-  doc["fw_sha"] = FW_GIT_SHA;
-
-  String payload;
-  serializeJson(doc, payload);
-  if (client.connected()) {
-    client.publish(motionTopic.c_str(), payload.c_str());
-  }
-}
-
 void checkRelayTimeout() {
 
   if (initialized) {
@@ -253,7 +206,7 @@ void checkRelayTimeout() {
 }
 
 void setup() {
-  // Keep serial debug output on TX/GPIO1 without claiming RX/GPIO3.
+  // Keep serial debug output on TX/GPIO1.
   Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);
 
   pinMode(RELAY_PIN, OUTPUT);
@@ -266,8 +219,6 @@ void setup() {
   WiFi.mode(WIFI_STA);
   buildTopics();
 
-  pinMode(PIR_PIN, INPUT);
-
   client.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
   client.setBufferSize(2048); // ensure MQTT can carry HELP payload
   client.setCallback(callback);
@@ -277,18 +228,7 @@ void setup() {
 }
 
 void loop() {
-  unsigned long now = millis();
-
   checkRelayTimeout();
-
-  bool pirIsHigh = (digitalRead(PIR_PIN) == HIGH);
-  bool motionStarted = pirIsHigh && !pirWasHigh;
-  pirWasHigh = pirIsHigh;
-
-  if (motionStarted && now - lastMillis >= PIR_INTERVAL) {
-    lastMillis = now;
-    handleMotionDetected();
-  }
 
   maintainWifi();
   maintainMqtt();

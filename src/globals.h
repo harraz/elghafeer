@@ -10,10 +10,7 @@
 #define RELAY_ON_DURATION_MAX_LIMIT_MS   3600000UL   // 1 h: internal safety cutoff
 
 extern const int RELAY_PIN;
-extern unsigned int PIR_INTERVAL;
-extern bool SKIP_LOCAL_RELAY;
 extern unsigned int RELAY_MAX_ON_DURATION;
-extern unsigned int MAX_PIR_INTERVAL_MS;
 extern bool DEBUG;
 extern const char* FW_GIT_BRANCH;
 extern const char* FW_GIT_SHA;
