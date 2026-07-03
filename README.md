@@ -4,7 +4,7 @@ An ESP8266 (Thing/ESP-01S) firmware that controls a relay over MQTT and accepts 
 
 ## Hardware
 - Board: ESP8266 (PlatformIO `env:thing`)
-- Relay on `RELAY_PIN` (GPIO0/D3)
+- Relay on configured `RELAY_PIN` (`relay_gpio_pin`; GPIO0 for the ESP-01 built-in relay board). Use `relay_active_high` to match active-high or active-low relay modules
 - Serial debug uses TX/GPIO1 only.
 
 ## MQTT
@@ -31,7 +31,7 @@ When the relay is turned on, auto-off is enforced via `RELAY_MAX_ON_DURATION`.
 ## Building & Uploading
 1) Ensure PlatformIO is installed (`platformio run`, `platformio run -t upload`).
 2) Wi-Fi credentials live in `src/secrets.h` (`WIFI_SSID`, `WIFI_PASSWORD`).
-3) Copy `config/device_config.example.json` to `config/local/esp01_builtin_relay.json` and set the device name, broker host, broker port, and debug default for the board you are flashing.
+3) Copy `config/device_config.example.json` to `config/local/esp01_builtin_relay.json` and set the device name, broker host, broker port, debug default, and relay GPIO and active level for the board you are flashing.
 4) The build generates `include/settings.h` automatically from `config/local/esp01_builtin_relay.json`.
 5) Connect the ESP8266 (upload port is `/dev/ttyUSB0` by default in `platformio.ini`).
 

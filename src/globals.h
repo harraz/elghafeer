@@ -10,6 +10,7 @@
 #define RELAY_ON_DURATION_MAX_LIMIT_MS   3600000UL   // 1 h: internal safety cutoff
 
 extern const int RELAY_PIN;
+extern const bool RELAY_ACTIVE_HIGH;
 extern unsigned int RELAY_MAX_ON_DURATION;
 extern bool DEBUG;
 extern const char* FW_GIT_BRANCH;
@@ -21,5 +22,8 @@ extern String activeWifiSsid;
 extern bool wifiConnected;
 
 extern unsigned int relayActivatedMillis;
+
+void setRelayState(bool on);
+bool isRelayOn();
 
 #endif   

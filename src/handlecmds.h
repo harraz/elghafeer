@@ -57,20 +57,20 @@ void handleCommand(String cmd) {
   String response;
 
   if (cmd == "REL_ON") {
-    digitalWrite(RELAY_PIN, HIGH);
+    setRelayState(true);
     relayActivatedMillis = millis();
     doc["status"] = "ok";
     doc["relay"] = "ON";
   }
   else if (cmd == "REL_OFF") {
-    digitalWrite(RELAY_PIN, LOW);
+    setRelayState(false);
     relayActivatedMillis = 0;
     doc["status"] = "ok";
     doc["relay"] = "OFF";
   }
   else if (cmd == "REL_STATUS") {
     doc["status"] = "ok";
-    doc["relay_status"] = digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF";
+    doc["relay_status"] = isRelayOn() ? "ON" : "OFF";
   }
   else if (cmd.startsWith("RELAY_MAX_ON_DURATION:")) {
     String value;
@@ -123,7 +123,9 @@ void handleCommand(String cmd) {
     doc["ip"] = WiFi.localIP().toString();
     doc["wifi_connected"] = wifiConnected;
     doc["wifi_ssid"] = activeWifiSsid;
-    doc["relay"] = digitalRead(RELAY_PIN) == HIGH ? "ON" : "OFF";
+    doc["relay"] = isRelayOn() ? "ON" : "OFF";
+    doc["relay_gpio_pin"] = RELAY_PIN;
+    doc["relay_active_high"] = RELAY_ACTIVE_HIGH;
     doc["relay_max_on_duration"] = RELAY_MAX_ON_DURATION;
     doc["relay_on_duration_min_limit_ms"] = RELAY_ON_DURATION_MIN_LIMIT_MS;
     doc["relay_on_duration_max_limit_ms"] = RELAY_ON_DURATION_MAX_LIMIT_MS;

@@ -23,6 +23,8 @@ REQUIRED_KEYS = {
     "mqtt_broker_port": int,
     "default_debug": bool,
     "default_relay_max_on_duration_ms": int,
+    "relay_gpio_pin": int,
+    "relay_active_high": bool,
 }
 
 
@@ -95,6 +97,8 @@ constexpr const char* MQTT_BROKER_HOST = "{escape_cpp_string(config["mqtt_broker
 constexpr int MQTT_BROKER_PORT = {config["mqtt_broker_port"]};
 constexpr bool DEFAULT_DEBUG = {cpp_bool(config["default_debug"])};
 constexpr unsigned int DEFAULT_RELAY_MAX_ON_DURATION_MS = {config["default_relay_max_on_duration_ms"]};
+constexpr int DEFAULT_RELAY_GPIO_PIN = {config["relay_gpio_pin"]};
+constexpr bool DEFAULT_RELAY_ACTIVE_HIGH = {cpp_bool(config["relay_active_high"])};
 """
 
     HEADER_PATH.write_text(header_contents, encoding="utf-8")

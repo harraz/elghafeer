@@ -12,7 +12,8 @@ const char* FW_GIT_SHA = BUILD_GIT_SHA;
 
 String GHAFEER_NAME = DEVICE_GHAFEER_NAME;
 
-const int RELAY_PIN  = 0;  // D3
+const int RELAY_PIN = DEFAULT_RELAY_GPIO_PIN;
+const bool RELAY_ACTIVE_HIGH = DEFAULT_RELAY_ACTIVE_HIGH;
 constexpr unsigned long WIFI_CONNECT_TIMEOUT_PER_NETWORK_MS = 5000UL;
 constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 30000UL;
 constexpr unsigned long MQTT_RETRY_INTERVAL_MS = 5000UL;
@@ -52,6 +53,17 @@ void debugPrint(const String &msg) {
   if (DEBUG) {
     Serial.println(msg);
   }
+}
+
+void setRelayState(bool on) {
+  int activeLevel = RELAY_ACTIVE_HIGH ? HIGH : LOW;
+  int inactiveLevel = RELAY_ACTIVE_HIGH ? LOW : HIGH;
+  digitalWrite(RELAY_PIN, on ? activeLevel : inactiveLevel);
+}
+
+bool isRelayOn() {
+  int activeLevel = RELAY_ACTIVE_HIGH ? HIGH : LOW;
+  return digitalRead(RELAY_PIN) == activeLevel;
 }
 
 bool publishStatusAndFlush(const String &msg, unsigned long flushMs) {
@@ -189,13 +201,13 @@ void checkRelayTimeout() {
 
   if (initialized) {
     initialized = false;
-    digitalWrite(RELAY_PIN, LOW);
+    setRelayState(false);
     debugPrint("Initial relay OFF at startup");
   }
   
-  if (relayActivatedMillis > 0 && digitalRead(RELAY_PIN) == HIGH) {
+  if (relayActivatedMillis > 0 && isRelayOn()) {
     if (millis() - relayActivatedMillis >= RELAY_MAX_ON_DURATION) {
-      digitalWrite(RELAY_PIN, LOW);
+      setRelayState(false);
       relayActivatedMillis = 0;
       if (client.connected()) {
         publishStatusAndFlush("Relay_OFF (timer expired)", 50);
@@ -211,7 +223,7 @@ void setup() {
 
   pinMode(RELAY_PIN, OUTPUT);
 
-  digitalWrite(RELAY_PIN, HIGH);
+  setRelayState(false);
   initialized = true;
   
   debugPrint("Starting setup...");
