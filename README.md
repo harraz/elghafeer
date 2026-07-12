@@ -13,7 +13,7 @@ publish-only, and then returns to deep sleep.
 - Relay ON duration: randomized between `7000` and `10000` ms
 - Post-trigger awake window after an accepted trigger: `12000` ms
 - Trigger window: `60000` ms
-- Accepted triggers allowed in one window: `3`
+- Accepted triggers allowed in one window: `2`
 - Lockout after the limit is exceeded: `300000` ms
 
 The limiter state is stored in Preferences/NVS so it survives resets and power
@@ -51,6 +51,12 @@ broker while still using QoS 0 publishes.
 - [docs/firmware-flow.puml](/home/harraz/projects/home_projects_new/elghafeer/docs/firmware-flow.puml)
   PlantUML sequence diagram for the current wake / throttle / relay flow.
 
+- [docs/firmware-flow.md](/home/harraz/projects/home_projects_new/elghafeer/docs/firmware-flow.md)
+  Mermaid sequence diagram for Markdown previews of the same firmware flow.
+
+- [docs/xiao-esp32c3-hardware-bootstrap.md](/home/harraz/projects/home_projects_new/elghafeer/docs/xiao-esp32c3-hardware-bootstrap.md)
+  Wiring and pin-state checklist for the XIAO ESP32-C3 deep-sleep relay node.
+
 **Build Metadata**
 
 The build injects Git metadata through `build_flags` in `platformio.ini`.
@@ -86,22 +92,40 @@ The generated settings also accept optional `relay_gpio_pin` and
 `wake_gpio_pin` values. Wire the PIR to the chosen ESP32-C3 wake pin and
 update `config/local/esp32c3_deepsleep.json` to match.
 
-**Active Config Keys**
+**Runtime Configuration**
 
-- `default_skip_local_relay`
-  When `true`, the node still publishes motion/status MQTT messages but does not drive the local relay.
+Runtime values are generated at build time. Do not edit `include/settings.h`
+directly; it is regenerated from the selected local JSON file.
 
-- `relay_on_min_duration_ms` / `relay_on_max_duration_ms`
-  Bounds for the randomized local relay ON duration on accepted wakes.
+```text
+config/board_id.txt
+  -> config/local/<board_id>.json
+  -> scripts/generate_settings_header.py
+  -> include/settings.h
+  -> src/main.cpp
+```
 
-- `post_trigger_awake_window_ms`
-  How long the node stays awake after an accepted trigger so the relay timer and MQTT loop can complete.
+For this branch, `config/board_id.txt` selects
+`config/local/esp32c3_deepsleep.json`.
 
-- `trigger_window_ms`, `max_accepted_in_window`, `lockout_ms`
-  The persisted limiter window and lockout policy.
-
-- `wifi_connect_timeout_ms`, `mqtt_connect_timeout_ms`, `time_sync_timeout_ms`
-  Upper bounds for Wi-Fi, MQTT, and NTP setup work on each wake.
+| Local JSON key | Generated constant | Description | Use cases |
+| --- | --- | --- | --- |
+| `device_ghafeer_name` | `DEVICE_GHAFEER_NAME` | Human-readable device or location name used in MQTT topics and motion payloads. | Give each installed node a clear identity such as a room, door, or owner name; separate MQTT topic paths for multiple deployed nodes. |
+| `mqtt_broker_host` | `MQTT_BROKER_HOST` | MQTT broker hostname or IP address. | Point the device at a local broker, lab broker, or production broker without changing firmware code. |
+| `mqtt_broker_port` | `MQTT_BROKER_PORT` | MQTT broker TCP port. | Keep the default `1883` for plain MQTT, or change it if the broker listens on a different local port. |
+| `default_debug` | `DEFAULT_DEBUG` | Enables extra serial logs and debug-only MQTT breadcrumbs. | Turn on during bring-up, Wi-Fi/MQTT troubleshooting, wake-loop debugging, and throttle-state inspection; keep off for normal quiet operation. |
+| `default_skip_local_relay` | `DEFAULT_SKIP_LOCAL_RELAY` | Disables physical relay actuation while keeping wake, Wi-Fi, MQTT, payload, and throttle behavior active. | Test PIR wiring and MQTT delivery without switching the connected load; run a publish-only sensor node; isolate relay hardware issues from firmware/network behavior. |
+| `relay_on_min_duration_ms` | `DEFAULT_RELAY_ON_MIN_DURATION_MS` | Lower bound for the randomized relay ON duration after an accepted wake. | Set the shortest acceptable load activation time; narrow the relay timing range for predictable tests. |
+| `relay_on_max_duration_ms` | `DEFAULT_RELAY_ON_MAX_DURATION_MS` | Upper bound for the randomized relay ON duration after an accepted wake. | Cap how long the relay can stay on; tune power use, load runtime, and audible relay activity. |
+| `post_trigger_awake_window_ms` | `DEFAULT_POST_TRIGGER_AWAKE_WINDOW_MS` | Total awake service window after an accepted trigger. During this window MQTT is serviced and the relay timer can expire before deep sleep. | Make this longer than the maximum relay ON duration so the relay can turn off before sleep; increase during debugging if MQTT messages are being missed. |
+| `wifi_connect_timeout_ms` | `DEFAULT_WIFI_CONNECT_TIMEOUT_MS` | Maximum total time spent trying configured Wi-Fi networks on each wake. | Shorten to save battery when Wi-Fi may be unavailable; lengthen when signal is weak or association is slow. |
+| `mqtt_connect_timeout_ms` | `DEFAULT_MQTT_CONNECT_TIMEOUT_MS` | Maximum time spent connecting to MQTT after Wi-Fi is available. | Shorten for battery-sensitive nodes; lengthen for slow brokers or networks where the first TCP connection often takes longer. |
+| `time_sync_timeout_ms` | `DEFAULT_TIME_SYNC_TIMEOUT_MS` | Maximum time spent waiting for NTP time before continuing without throttle evaluation. | Increase if NTP is slow and rate limiting must be strict; shorten if relay response matters more than persisted throttle accuracy. |
+| `trigger_window_ms` | `DEFAULT_TRIGGER_WINDOW_MS` | Duration of the persisted rate-limit counting window. | Define the time span in which repeated motion wakes are counted together. |
+| `max_accepted_in_window` | `DEFAULT_MAX_ACCEPTED_IN_WINDOW` | Number of accepted wakes allowed inside one trigger window before lockout starts. | Allow a small number of legitimate repeated triggers while suppressing chatter, stuck PIR outputs, or rapid retriggers. |
+| `lockout_ms` | `DEFAULT_LOCKOUT_MS` | Suppression period started after the accepted-trigger limit is exceeded. | Prevent a noisy PIR or held-low wake line from repeatedly actuating the relay and publishing motion events. |
+| `relay_gpio_pin` | `DEFAULT_RELAY_GPIO_PIN` | ESP32-C3 GPIO used to drive the local relay. Current XIAO wiring uses `GPIO10` / `D10`. | Move relay control to a different safe GPIO for a revised board layout; match the firmware to the actual relay driver input. |
+| `wake_gpio_pin` | `DEFAULT_WAKE_GPIO_PIN` | ESP32-C3 GPIO used as the deep-sleep wake input. Current XIAO wiring uses `GPIO3` / `D1` and wakes when pulled low. | Move the PIR/wake input to a different deep-sleep-capable GPIO; match the firmware to a board-specific wake circuit. |
 
 Common commands:
 

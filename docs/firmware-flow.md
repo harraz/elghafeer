@@ -1,0 +1,92 @@
+# Firmware Flow
+
+This Mermaid sequence diagram mirrors `docs/firmware-flow.puml` and is easier
+to preview in Markdown renderers that support Mermaid.
+
+```mermaid
+sequenceDiagram
+    title ESP32-C3 GPIO Wake With Preferences/NTP Throttle
+
+    actor PIR
+    participant ESP as ESP32-C3<br/>XIAO board
+    participant WIFI as WiFi
+    participant MQTT
+    participant NTP
+    participant NVS as Preferences/NVS
+    participant RELAY as Relay<br/>D10/GPIO10 active high
+
+    PIR->>ESP: Pull D1/GPIO3 low to wake
+    ESP->>ESP: Boot and preset D10/GPIO10 LOW
+    ESP->>ESP: Configure D1/GPIO3 INPUT_PULLUP
+    ESP->>NVS: Begin Preferences access
+
+    ESP->>WIFI: Connect
+    alt Wi-Fi timeout
+        ESP->>ESP: Deep sleep
+    else Wi-Fi connected
+        ESP->>MQTT: Connect
+        alt MQTT timeout
+            ESP->>ESP: Deep sleep
+        else MQTT connected
+            ESP->>ESP: Publish firmware identity to serial when DEBUG is enabled
+            ESP->>NVS: Read saved limiter state
+            ESP->>NTP: Sync wall-clock time
+
+            alt NTP success
+                ESP->>NVS: Evaluate trigger window and lockout
+                alt Lockout active
+                    ESP->>NVS: Increment suppressedWakeCount
+                    ESP->>MQTT: Publish Wake suppressed, lockout active, count:N
+                    ESP->>MQTT: Service MQTT briefly before sleep
+                    ESP->>ESP: Deep sleep
+                else Rate limit exceeded
+                    ESP->>NVS: Increment suppressedWakeCount
+                    ESP->>MQTT: Publish Wake suppressed, rate limit exceeded, count:N
+                    ESP->>MQTT: Service MQTT briefly before sleep
+                    ESP->>ESP: Deep sleep
+                else Accepted
+                    ESP->>NVS: Update windowStartEpoch
+                    ESP->>NVS: Increment acceptedCountInWindow
+                    ESP->>NVS: Clear cooldownUntilEpoch
+                    ESP->>NVS: Clear suppressedWakeCount
+                end
+            else NTP failed
+                ESP->>MQTT: Publish Time sync failed, skipping throttle
+                ESP->>MQTT: Service MQTT briefly
+                ESP->>ESP: Continue without throttle decision
+            end
+
+            alt Previous suppressed wakes exist
+                ESP->>MQTT: Publish Suppressed_wakes:N
+                ESP->>MQTT: Service MQTT briefly
+                ESP->>NVS: Clear suppressedWakeCount
+            end
+
+            ESP->>ESP: Randomize currentRelayOnDurationMs
+            ESP->>MQTT: Publish motion payload
+            alt Local relay enabled
+                ESP->>RELAY: D10/GPIO10 HIGH -> ON
+                ESP->>MQTT: Publish Relay ON, local motion trigger
+            else Local relay skipped by config
+                ESP->>MQTT: Publish Local relay skipped by config
+            end
+
+            loop For post-trigger awake window
+                alt Relay duration elapsed
+                    ESP->>RELAY: D10/GPIO10 LOW -> OFF
+                    ESP->>MQTT: Publish Relay OFF, timer expired
+                end
+            end
+
+            opt DEBUG enabled
+                ESP->>MQTT: Publish throttle-state snapshot
+            end
+
+            ESP->>MQTT: Publish Going to deep sleep
+            ESP->>MQTT: Service MQTT briefly before disconnect
+            ESP->>WIFI: Disconnect
+            ESP->>ESP: Short settle delay
+            ESP->>ESP: Rearm D1/GPIO3 low wake and deep sleep
+        end
+    end
+```
