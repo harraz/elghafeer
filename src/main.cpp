@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include <Preferences.h>
 #include <esp_sleep.h>
+#include <driver/gpio.h>
 
 #include <PubSubClient.h>
 #include "settings.h"
@@ -237,8 +238,13 @@ bool publishStatusAndFlush(const String &msg, unsigned long flushMs = 200) {
 }
 
 void publishFirmwareIdentity() {
-  String versionMsg = "Firmware build: " + String(FW_GIT_BRANCH) + "@" + String(FW_GIT_SHA);
+  String versionMsg = "Wake: firmware=" + String(FW_GIT_BRANCH) + "@" + String(FW_GIT_SHA) +
+                      " wifi_ssid=" + (wifiConnected ? activeWifiSsid : String("none")) +
+                      " ip=" + (wifiConnected ? WiFi.localIP().toString() : String("none"));
 
+  if (client.connected()) {
+    publishStatusAndFlush(versionMsg);
+  }
   // Print to serial in debug builds so the flashed branch/SHA can be seen
   // even when MQTT is not being watched.
   debugPrint(versionMsg);
@@ -307,6 +313,13 @@ void goToSleep(bool publishStatus = true) {
   if (WiFi.isConnected()) {
     WiFi.disconnect(true, true);
   }
+  // Keep the relay control line in its OFF state while the digital GPIO domain
+  // is powered down for deep sleep. Without this, external relay-module input
+  // circuitry can pull the pad high after the ESP stops actively driving it.
+  digitalWrite(RELAY_PIN, LOW);
+  pinMode(RELAY_PIN, OUTPUT);
+  gpio_hold_en(static_cast<gpio_num_t>(RELAY_PIN));
+  gpio_deep_sleep_hold_en();
   debugPrint("Sleeping...");
   // Let the wake-input path settle before deep sleep rearms the GPIO wake source.
   delay(1500);
@@ -338,6 +351,7 @@ void publishThrottleStateSnapshot() {
 void setup() {
   digitalWrite(RELAY_PIN, LOW);  // preset output level before enabling pin to avoid boot pulse
   pinMode(RELAY_PIN, OUTPUT);
+  gpio_hold_dis(static_cast<gpio_num_t>(RELAY_PIN));
   Serial.begin(115200);
   delay(200);
   // Prepare persistent storage before reading or writing saved throttle state.
@@ -432,11 +446,17 @@ void setup() {
     } else {
       publishStatusStep("Wake accepted; starting first window");
     }
+    if (client.connected()) {
+      String acceptedMsg = "Wake accepted: count:" + String(persistedState.acceptedCountInWindow + 1) +
+                           "/" + String(MAX_ACCEPTED_IN_WINDOW);
+      client.publish(statusTopic.c_str(), acceptedMsg.c_str());
+    }
   }
   // Pick a random relay ON duration inside the allowed range for this wake.
   currentRelayOnDurationMs = random(RELAY_ON_MIN_DURATION_MS, RELAY_ON_MAX_DURATION_MS + 1);
 
   doc["motion"] = true;
+  doc["event"] = "motion_detected";
   doc["mac"] = mac;
   doc["location"] = GHAFEER_NAME;
   doc["ip"] = WiFi.localIP().toString();
@@ -486,10 +506,7 @@ void setup() {
   publishStatusStep("Relay duration ms:" + String(currentRelayOnDurationMs));
   if (client.connected()) {
     client.publish(motionTopic.c_str(), payload.c_str());
-    publishStatusStep("Motion event published");
     tracePrint("TRACE: motion_published");
-    String wifiMsg = "WiFi connected SSID:" + activeWifiSsid + " IP:" + WiFi.localIP().toString();
-    client.publish(statusTopic.c_str(), wifiMsg.c_str());
   }
 
   // Relay ON from local motion trigger unless the device config disables

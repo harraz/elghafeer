@@ -127,6 +127,25 @@ For this branch, `config/board_id.txt` selects
 | `relay_gpio_pin` | `DEFAULT_RELAY_GPIO_PIN` | ESP32-C3 GPIO used to drive the local relay. Current XIAO wiring uses `GPIO10` / `D10`. | Move relay control to a different safe GPIO for a revised board layout; match the firmware to the actual relay driver input. |
 | `wake_gpio_pin` | `DEFAULT_WAKE_GPIO_PIN` | ESP32-C3 GPIO used as the deep-sleep wake input. Current XIAO wiring uses `GPIO3` / `D1` and wakes when pulled low. | Move the PIR/wake input to a different deep-sleep-capable GPIO; match the firmware to a board-specific wake circuit. |
 
+**Throttle Tuning**
+
+The false-trigger limiter depends on Wi-Fi plus NTP wall-clock time. When
+Wi-Fi or NTP is unavailable, the firmware skips throttle evaluation, treats the
+wake as accepted, runs the local relay path, and sleeps. If false-trigger
+suppression must work even when Wi-Fi is down, use a different limiter design
+based on ESP-retained time/state instead of NTP wall-clock time.
+
+To allow more motion events before lockout, increase
+`max_accepted_in_window`. To make those events actually fit, make sure
+`trigger_window_ms` is long enough for the full wake cycle count you want. Each
+accepted wake spends time on Wi-Fi connect, MQTT connect, NTP sync, relay
+duration, `post_trigger_awake_window_ms`, and the final sleep-settle delay.
+
+For example, if the practical wake cycle is about 15-20 seconds, then a
+`60000` ms trigger window can fit only a small number of accepted wakes before
+the window expires and resets. If you raise `max_accepted_in_window`, consider
+raising `trigger_window_ms` as well.
+
 Common commands:
 
 ```bash
@@ -148,6 +167,8 @@ start the upload first and then manually hold `BOOT`, tap `RESET`, and release
 
 Normal operation keeps the status topic focused on important events:
 
+- `Wake: firmware=<branch>@<sha> wifi_ssid=<ssid> ip=<ip>`
+- `Wake accepted: count:N/M`
 - `Relay ON (local motion trigger)`
 - `Relay OFF (timer expired)`
 - `Local relay skipped by config`
