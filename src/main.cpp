@@ -458,6 +458,8 @@ void setup() {
   doc["motion"] = true;
   doc["event"] = "motion_detected";
   doc["mac"] = mac;
+  doc["name"] = GHAFEER_NAME;
+  doc["ghafeer_name"] = GHAFEER_NAME;
   doc["location"] = GHAFEER_NAME;
   doc["ip"] = WiFi.localIP().toString();
   doc["wifi_connected"] = wifiConnected;
