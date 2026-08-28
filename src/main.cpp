@@ -456,14 +456,9 @@ void setup() {
   currentRelayOnDurationMs = random(RELAY_ON_MIN_DURATION_MS, RELAY_ON_MAX_DURATION_MS + 1);
 
   doc["motion"] = true;
-  doc["event"] = "motion_detected";
   doc["mac"] = mac;
-  doc["name"] = GHAFEER_NAME;
-  doc["ghafeer_name"] = GHAFEER_NAME;
   doc["location"] = GHAFEER_NAME;
   doc["ip"] = WiFi.localIP().toString();
-  doc["wifi_connected"] = wifiConnected;
-  doc["wifi_ssid"] = activeWifiSsid;
   doc["relay_duration_ms"] = currentRelayOnDurationMs;
   doc["post_trigger_awake_window_ms"] = POST_TRIGGER_AWAKE_WINDOW_MS;
   doc["fw_branch"] = FW_GIT_BRANCH;
@@ -508,7 +503,9 @@ void setup() {
   publishStatusStep("Relay duration ms:" + String(currentRelayOnDurationMs));
   if (client.connected()) {
     client.publish(motionTopic.c_str(), payload.c_str());
-    tracePrint("TRACE: motion_published");
+    publishStatusStep("Motion event published");
+    String wifiMsg = "WiFi connected SSID:" + activeWifiSsid + " IP:" + WiFi.localIP().toString();
+    client.publish(statusTopic.c_str(), wifiMsg.c_str());
   }
 
   // Relay ON from local motion trigger unless the device config disables
