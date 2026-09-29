@@ -413,8 +413,6 @@ void setup() {
   doc["mac"] = mac;
   doc["location"] = GHAFEER_NAME;
   doc["ip"] = WiFi.localIP().toString();
-  doc["wifi_connected"] = wifiConnected;
-  doc["wifi_ssid"] = activeWifiSsid;
   doc["relay_duration_ms"] = currentRelayOnDurationMs;
   doc["post_trigger_awake_window_ms"] = POST_TRIGGER_AWAKE_WINDOW_MS;
   doc["fw_branch"] = FW_GIT_BRANCH;
@@ -458,8 +456,8 @@ void setup() {
 
   publishStatusStep("Relay duration ms:" + String(currentRelayOnDurationMs));
   if (client.connected()) {
-    client.publish(motionTopic.c_str(), payload.c_str());
-    publishStatusStep("Motion event published");
+    bool motionPublished = client.publish(motionTopic.c_str(), payload.c_str());
+    publishStatusStep(motionPublished ? "Motion event published" : "Motion event publish failed");
     String wifiMsg = "WiFi connected SSID:" + activeWifiSsid + " IP:" + WiFi.localIP().toString();
     client.publish(statusTopic.c_str(), wifiMsg.c_str());
   }
