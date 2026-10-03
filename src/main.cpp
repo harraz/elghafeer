@@ -322,10 +322,23 @@ void goToSleep(bool publishStatus = true) {
   gpio_deep_sleep_hold_en();
   debugPrint("Sleeping...");
   // Let the wake-input path settle before deep sleep rearms the GPIO wake source.
-  delay(1500);
+  //delay(1500);
+
+  unsigned long highSince = millis();
+
+  while (millis() - highSince < 1500UL) {
+    if (digitalRead(WAKE_PIN) == LOW) {
+      // PIR is still active: restart the quiet-period timer.
+      highSince = millis();
+    }
+    delay(10);
+  }
+
+  // Input has stayed HIGH for 1.5 seconds; arm LOW-triggered wake.
   esp_deep_sleep_enable_gpio_wakeup(BIT(WAKE_PIN), ESP_GPIO_WAKEUP_GPIO_LOW);
   esp_deep_sleep_start();
-}
+
+  }
 
 void publishThrottleStateSnapshot() {
   // This snapshot is diagnostic-only. It helps explain what the persisted
